@@ -203,3 +203,74 @@ test('verifyJwtWithJwks cryptographically verifies RS256 JWTs and rejects tamper
   assert.equal(wrongKidRes.verified, false);
   assert.ok(wrongKidRes.reason.includes('unknown-kid'));
 });
+
+test('verifyJwtWithJwks verifies ES256 (ECDSA P-256) and rejects alg=none and oct keys', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const jwk = publicKey.export({ format: 'jwk' });
+  jwk.kid = 'ec-1';
+
+  const header = encodeBase64Url({ alg: 'ES256', typ: 'JWT', kid: 'ec-1' });
+  const payload = encodeBase64Url({ sub: 'ec-user' });
+  const sig = crypto
+    .sign('SHA256', Buffer.from(`${header}.${payload}`), { key: privateKey, dsaEncoding: 'ieee-p1363' })
+    .toString('base64url');
+
+  const ok = verifyJwtWithJwks(`${header}.${payload}.${sig}`, { keys: [jwk] });
+  assert.equal(ok.verified, true);
+  assert.equal(ok.alg, 'ES256');
+
+  const noneToken = `${encodeBase64Url({ alg: 'none' })}.${payload}.`;
+  assert.equal(verifyJwtWithJwks(noneToken, { keys: [jwk] }).verified, false);
+  assert.equal(verifyJwtWithJwks(`${header}.${payload}.${sig}`, { keys: [{ kty: 'oct', k: 'abc' }] }).verified, false);
+});
+
+test('parseRawHttpRequest handles IPv6, duplicate Cookie headers, JSON body, and invalid inputs', () => {
+  const raw = [
+    'POST /oauth/token HTTP/1.1',
+    'Host: [::1]:3000',
+    'Cookie: a=1',
+    'Cookie: b=2',
+    'Content-Type: application/json',
+    '',
+    '{"grant_type":"client_credentials","client_id":"c1"}',
+  ].join('\n');
+
+  const parsed = parseRawHttpRequest(raw);
+  assert.equal(parsed.url, 'http://[::1]:3000/oauth/token');
+  assert.equal(parsed.headers.Cookie, 'a=1; b=2');
+  assert.equal(parsed.oauthParams.grant_type, 'client_credentials');
+
+  assert.throws(() => parseRawHttpRequest('GET /only-path HTTP/1.1'), /Host header/);
+  assert.throws(() => parseRawHttpRequest('   '), /Empty raw HTTP request/);
+});
+
+test('auditOAuthContext flags PKCE plain, missing PKCE, missing nonce, and cookie risks', () => {
+  const audit = auditOAuthContext({
+    oauthParams: {
+      response_type: 'code id_token',
+      state: '123',
+      code_challenge: 'abc',
+      code_challenge_method: 'plain',
+    },
+    status: 200,
+    responseHeaders: {
+      'set-cookie': 'sso=1; Domain=.example.com; Path=/; SameSite=None',
+    },
+  });
+  const codes = audit.findings.map((f) => f.code);
+  assert.ok(codes.includes('OAUTH_WEAK_STATE'));
+  assert.ok(codes.includes('OAUTH_PKCE_PLAIN'));
+  assert.ok(codes.includes('OIDC_MISSING_NONCE'));
+  assert.ok(codes.includes('HTTP_COOKIE_SAMESITE_NONE_INSECURE'));
+  assert.ok(codes.includes('HTTP_COOKIE_BROAD_DOMAIN'));
+});
+
+test('CookieJar respects Secure flag on non-HTTPS non-loopback origins and Max-Age=0 deletion', () => {
+  const jar = new CookieJar();
+  jar.setFromHeaders('https://app.example.com/login', ['sec_tok=abc; Path=/; Secure']);
+  assert.equal(jar.getCookieHeader('http://app.example.com/api'), null);
+  assert.equal(jar.getCookieHeader('https://app.example.com/api'), 'sec_tok=abc');
+
+  jar.setFromHeaders('https://app.example.com/logout', ['sec_tok=; Path=/; Max-Age=0']);
+  assert.equal(jar.getCookieHeader('https://app.example.com/api'), null);
+});

@@ -324,6 +324,34 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     assert.equal(formPostRes.status, 200);
     const tracesAfterPost = await (await fetch(`${baseUrl}/api/traces`)).json();
     assert.equal(tracesAfterPost.traces[0].request.oauthParams.code, 'form_post_code_1');
+
+    // 11. /api/parse validation & /api/jwt/verify against live JWKS endpoint
+    const badParse = await fetch(`${baseUrl}/api/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: 'GET /no-host HTTP/1.1' }),
+    });
+    assert.equal(badParse.status, 400);
+
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    jwk.kid = 'live-rsa-1';
+    const headerB64 = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'live-rsa-1' })).toString('base64url');
+    const payloadB64 = Buffer.from(JSON.stringify({ sub: 'u1' })).toString('base64url');
+    const sigB64 = crypto.sign('RSA-SHA256', Buffer.from(`${headerB64}.${payloadB64}`), privateKey).toString('base64url');
+
+    const jwksVerify = await fetch(`${baseUrl}/api/jwt/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: `${headerB64}.${payloadB64}.${sigB64}`, jwks: { keys: [jwk] } }),
+    });
+    assert.equal((await jwksVerify.json()).verified, true);
+
+    // 12. Mock IdP /userinfo rejects invalid Bearer token
+    const badUserinfo = await fetch(`${baseUrl}/mock-idp/userinfo`, {
+      headers: { Authorization: 'Bearer invalid_tok' },
+    });
+    assert.equal(badUserinfo.status, 401);
   } finally {
     server.close();
   }
