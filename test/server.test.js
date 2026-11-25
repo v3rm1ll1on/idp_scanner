@@ -379,6 +379,13 @@ test('sendAndTrace redirect method rules (302 vs 307, custom scheme), Discovery 
   auxApp.get('/.well-known/oauth-authorization-server', (_req, res) => {
     res.json({ issuer: 'https://custom-oauth.example', authorization_endpoint: 'https://custom-oauth.example/auth' });
   });
+  auxApp.get('/protected/.well-known/openid-configuration', (req, res) => {
+    const expected = `Basic ${Buffer.from('cid:csec').toString('base64')}`;
+    if (req.get('Authorization') !== expected) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    return res.json({ issuer: 'https://protected.example', authorization_endpoint: 'https://protected.example/auth' });
+  });
   auxApp.get('/jwks.json', (_req, res) => res.json({ keys: [jwk] }));
   auxApp.get('/jwks-html', (_req, res) => res.type('html').send('<html>error</html>'));
 
@@ -458,6 +465,27 @@ test('sendAndTrace redirect method rules (302 vs 307, custom scheme), Discovery 
       body: JSON.stringify({ token: jwt, jwksUri: `${auxBase}/missing.json` }),
     });
     assert.equal(notFoundVerifyRes.status, 502);
+
+    // 5. Discovery with Basic Auth header
+    const noAuthDisc = await fetch(`${baseUrl}/api/discover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issuerUrl: `${auxBase}/protected` }),
+    });
+    assert.equal(noAuthDisc.status, 404);
+
+    const basicHeader = `Basic ${Buffer.from('cid:csec').toString('base64')}`;
+    const authDisc = await (
+      await fetch(`${baseUrl}/api/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issuerUrl: `${auxBase}/protected`,
+          headers: { Authorization: basicHeader },
+        }),
+      })
+    ).json();
+    assert.equal(authDisc.summary.issuer, 'https://protected.example');
   } finally {
     auxServer.closeAllConnections?.();
     auxServer.close();

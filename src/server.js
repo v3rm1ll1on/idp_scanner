@@ -89,7 +89,7 @@ export function createApp() {
   });
 
   app.post('/api/discover', async (req, res) => {
-    const { issuerUrl } = req.body || {};
+    const { issuerUrl, headers = {} } = req.body || {};
     if (!issuerUrl || typeof issuerUrl !== 'string') {
       return res.status(400).json({ error: 'Missing issuerUrl' });
     }
@@ -109,7 +109,7 @@ export function createApp() {
         const hops = await sendAndTrace(store, {
           method: 'GET',
           url: candidate,
-          headers: { Accept: 'application/json' },
+          headers: { Accept: 'application/json', ...headers },
           followRedirects: true,
           label: 'oidc_discovery',
         });
@@ -312,7 +312,7 @@ export function createApp() {
   });
 
   app.post('/api/jwt/verify', async (req, res) => {
-    const { token, jwksUri, jwks } = req.body || {};
+    const { token, jwksUri, jwks, headers = {} } = req.body || {};
     if (!token) {
       return res.status(400).json({ error: 'Missing token' });
     }
@@ -320,7 +320,7 @@ export function createApp() {
       let keySet = jwks;
       if (!keySet && jwksUri) {
         const jwksRes = await fetch(jwksUri, {
-          headers: { Accept: 'application/json' },
+          headers: { Accept: 'application/json', ...headers },
           signal: AbortSignal.timeout(10000),
         });
         if (!jwksRes.ok) {

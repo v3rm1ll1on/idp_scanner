@@ -152,7 +152,12 @@
               </div>
 
               <div id="reptab-headers" class="rep-subpanel fuzzer-panel active">
-                <textarea id="repHeaders" class="input mono code-edit" rows="10" style="flex:1;">{}</textarea>
+                <div class="form-row">
+                  <input id="basicUserInput" class="input mono" type="text" placeholder="Basic Auth user / client_id" />
+                  <input id="basicPassInput" class="input mono" type="password" placeholder="password / client_secret" />
+                  <button id="applyBasicAuthBtn" class="btn btn-secondary" data-tip="Encode user:pass as Base64 and set Authorization: Basic header in Headers (JSON).">Set Basic Auth</button>
+                </div>
+                <textarea id="repHeaders" class="input mono code-edit" rows="9" style="flex:1;">{}</textarea>
               </div>
 
               <div id="reptab-body" class="rep-subpanel fuzzer-panel">

@@ -109,7 +109,9 @@ function connectTraceStream() {
 $('discoverBtn').addEventListener('click', async () => {
   const issuerUrl = $('issuerInput').value.trim();
   if (!issuerUrl) return;
-  const data = await api('/api/discover', { method: 'POST', body: JSON.stringify({ issuerUrl }) });
+  let headers = {};
+  try { headers = parseRepeaterHeaders(); } catch { headers = {}; }
+  const data = await api('/api/discover', { method: 'POST', body: JSON.stringify({ issuerUrl, headers }) });
   renderDiscovery(data, {
     onRefreshRedirectMutations: refreshRedirectMutations,
     onRefreshCustomParams: refreshCustomParamOptions,
@@ -351,15 +353,39 @@ $('customOnlyAnomalies').addEventListener('change', renderCustomFuzzerTable);
 $('repUrl').addEventListener('change', refreshCustomParamOptions);
 $('repBody').addEventListener('change', refreshCustomParamOptions);
 
+$('applyBasicAuthBtn').addEventListener('click', () => {
+  const user = $('basicUserInput').value;
+  const pass = $('basicPassInput').value;
+  if (!user && !pass) return;
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch {
+    headers = {};
+  }
+  const bytes = new TextEncoder().encode(`${user}:${pass}`);
+  const b64 = btoa(String.fromCharCode(...bytes));
+  delete headers.authorization;
+  headers.Authorization = `Basic ${b64}`;
+  $('repHeaders').value = JSON.stringify(headers, null, 2);
+});
+
 $('batchRedirectBtn').addEventListener('click', async () => {
   const baseUrl = $('repUrl').value.trim();
   if (!baseUrl) return;
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch (err) {
+    $('redirectFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(err.message)}</span>`;
+    return;
+  }
   const attackerHost = $('attackerHostInput').value.trim() || 'attacker.example';
   const useCookieJar = $('repUseCookieJar').checked;
   await withBusyButton($('batchRedirectBtn'), 'Probing...', async () => {
     const data = await api('/api/mutations/redirect-uri/batch', {
       method: 'POST',
-      body: JSON.stringify({ baseUrl, attackerHost, useCookieJar }),
+      body: JSON.stringify({ baseUrl, headers, attackerHost, useCookieJar }),
     });
     if (data.error) {
       $('redirectFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
@@ -375,11 +401,18 @@ $('batchRedirectBtn').addEventListener('click', async () => {
 $('batchParamsBtn').addEventListener('click', async () => {
   const baseUrl = $('repUrl').value.trim();
   if (!baseUrl) return;
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch (err) {
+    $('paramFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(err.message)}</span>`;
+    return;
+  }
   const useCookieJar = $('repUseCookieJar').checked;
   await withBusyButton($('batchParamsBtn'), 'Running...', async () => {
     const data = await api('/api/mutations/params/batch', {
       method: 'POST',
-      body: JSON.stringify({ baseUrl, useCookieJar }),
+      body: JSON.stringify({ baseUrl, headers, useCookieJar }),
     });
     if (data.error) {
       $('paramFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
@@ -564,9 +597,11 @@ $('verifyJwtBtn').addEventListener('click', async () => {
     outEl.innerHTML = '<span class="badge badge-warn">Provide both a JWT (or select a trace with one) and a JWKS URI.</span>';
     return;
   }
+  let headers = {};
+  try { headers = parseRepeaterHeaders(); } catch { headers = {}; }
   const res = await api('/api/jwt/verify', {
     method: 'POST',
-    body: JSON.stringify({ token, jwksUri }),
+    body: JSON.stringify({ token, jwksUri, headers }),
   });
   outEl.style.display = 'block';
   outEl.innerHTML = `<span class="badge ${res.verified ? 'badge-ok' : 'badge-danger'}">${res.verified ? 'SIGNATURE VALID' : 'SIGNATURE INVALID'}</span> ${escapeHtml(res.reason || res.error || '')}`;
