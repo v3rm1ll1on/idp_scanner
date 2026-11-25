@@ -107,6 +107,23 @@ export function mutateTokenBody(mutator) {
   $('repBody').value = params.toString();
 }
 
+export function setBodyField(name, payload) {
+  const raw = ($('repBody').value || '').trim();
+  if (raw.startsWith('{')) {
+    try {
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        obj[name] = payload;
+        $('repBody').value = JSON.stringify(obj, null, 2);
+        return;
+      }
+    } catch {
+      // Fallback to form-urlencoded below
+    }
+  }
+  mutateTokenBody((p) => p.set(name, payload));
+}
+
 export async function loadParamMutations() {
   const res = await api('/api/parse', {
     method: 'POST',
@@ -314,7 +331,7 @@ export function renderCustomFuzzerTable() {
       const payload = btn.dataset.payload;
       if (!name) return;
       if (loc === 'body') {
-        mutateTokenBody((p) => p.set(name, payload));
+        setBodyField(name, payload);
       } else {
         try {
           const u = new URL($('repUrl').value);

@@ -319,11 +319,18 @@ export function createApp() {
     try {
       let keySet = jwks;
       if (!keySet && jwksUri) {
-        const jwksRes = await fetch(jwksUri, { headers: { Accept: 'application/json' } });
+        const jwksRes = await fetch(jwksUri, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
         if (!jwksRes.ok) {
           return res.status(502).json({ error: `Failed to fetch JWKS: HTTP ${jwksRes.status}` });
         }
-        keySet = await jwksRes.json();
+        try {
+          keySet = await jwksRes.json();
+        } catch {
+          return res.status(502).json({ error: 'JWKS endpoint did not return valid JSON' });
+        }
       }
       return res.json(verifyJwtWithJwks(token, keySet));
     } catch (err) {

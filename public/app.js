@@ -48,6 +48,30 @@ async function loadMockConfig() {
   });
 }
 
+let renderTimer = null;
+function scheduleTraceRender() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    renderTraceList();
+    renderSequenceDiagram();
+  }, 50);
+}
+
+function parseRepeaterHeaders() {
+  const raw = ($('repHeaders').value || '').trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Headers must be a JSON object');
+    }
+    return parsed;
+  } catch (err) {
+    throw new Error(`Invalid Headers JSON: ${err.message}`);
+  }
+}
+
 function connectTraceStream() {
   const es = new EventSource('/api/traces/stream');
   es.addEventListener('connected', () => {
@@ -60,8 +84,7 @@ function connectTraceStream() {
       if (!state.traces.some((t) => t.id === entry.id)) {
         state.traces.unshift(entry);
         if (!state.selectedTraceId) state.selectedTraceId = entry.id;
-        renderTraceList();
-        renderSequenceDiagram();
+        scheduleTraceRender();
       }
     } catch {
       // Ignore parse errors
@@ -199,8 +222,14 @@ $('parseBtn').addEventListener('click', async () => {
 
 // Repeater & Fuzzer events
 $('repSendBtn').addEventListener('click', async () => {
-  let headers = {};
-  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch (err) {
+    $('repResponsePreview').textContent = err.message;
+    document.querySelector('.rep-subtab[data-reptab="response"]').click();
+    return;
+  }
   const data = await api('/api/send', {
     method: 'POST',
     body: JSON.stringify({
@@ -237,8 +266,14 @@ $('repOpenBrowserBtn').addEventListener('click', () => {
 });
 
 $('repReplay2xBtn').addEventListener('click', async () => {
-  let headers = {};
-  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch (err) {
+    $('replayResultBox').style.display = 'block';
+    $('replayResultBox').textContent = err.message;
+    return;
+  }
   const payload = {
     method: $('repMethod').value,
     url: $('repUrl').value.trim(),
@@ -360,8 +395,13 @@ $('batchParamsBtn').addEventListener('click', async () => {
 $('batchTokenBtn').addEventListener('click', async () => {
   const url = $('repUrl').value.trim();
   if (!url) return;
-  let headers = {};
-  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch (err) {
+    $('tokenFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(err.message)}</span>`;
+    return;
+  }
   await withBusyButton($('batchTokenBtn'), 'Probing...', async () => {
     const data = await api('/api/mutations/token/batch', {
       method: 'POST',
@@ -405,8 +445,13 @@ $('batchCustomBtn').addEventListener('click', async () => {
   const payloads = $('customPayloadsInput').value.split('\n').map((s) => s.replace(/\r$/, ''));
   if (!baseUrl || !paramName || payloads.length === 0) return;
 
-  let headers = {};
-  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+  let headers;
+  try {
+    headers = parseRepeaterHeaders();
+  } catch (err) {
+    $('customFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(err.message)}</span>`;
+    return;
+  }
 
   await withBusyButton($('batchCustomBtn'), 'Fuzzing...', async () => {
     const data = await api('/api/mutations/custom/batch', {
