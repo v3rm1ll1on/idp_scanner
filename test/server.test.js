@@ -294,6 +294,26 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     assert.equal(customBatch.results[1].status, 400);
     assert.equal(customBatch.results[1].anomaly, true);
     assert.equal(customBatch.results[1].verdict, 'ANOMALY');
+
+    // 9. Token Endpoint batch probe
+    const tokBatchRes = await fetch(`${baseUrl}/api/mutations/token/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: `${baseUrl}/mock-idp/token`,
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: replayCode,
+          redirect_uri: `${baseUrl}/callback`,
+          client_id: 'pkce-client',
+          code_verifier: verifier,
+        }).toString(),
+        mutationIds: ['TOKEN_STRIP_VERIFIER', 'TOKEN_WRONG_VERIFIER'],
+      }),
+    });
+    assert.equal(tokBatchRes.status, 200);
+    const tokBatch = await tokBatchRes.json();
+    assert.equal(tokBatch.results.every((r) => r.accepted === false && r.verdict === 'BLOCKED'), true);
   } finally {
     server.close();
   }

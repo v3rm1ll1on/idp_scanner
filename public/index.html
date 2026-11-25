@@ -166,9 +166,10 @@
             <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
               <div class="fuzzer-tabs">
-                <button class="fuzzer-tab active" data-fuzzer="redirect">Redirect-URI Fuzzer (28)</button>
-                <button class="fuzzer-tab" data-fuzzer="params">OAuth Param Fuzzer (9)</button>
-                <button class="fuzzer-tab" data-fuzzer="custom">Custom Field Fuzzer</button>
+                <button class="fuzzer-tab active" data-fuzzer="redirect">Redirect-URI (28)</button>
+                <button class="fuzzer-tab" data-fuzzer="params">Auth Params (9)</button>
+                <button class="fuzzer-tab" data-fuzzer="token">Token Endpoint (6)</button>
+                <button class="fuzzer-tab" data-fuzzer="custom">Custom Field</button>
               </div>
 
               <div id="fuzzer-redirect" class="fuzzer-panel active">
@@ -194,6 +195,17 @@
                   <label class="checkbox-inline" style="font-size:11px;"><input id="paramOnlyAccepted" type="checkbox" /> Only Accepted</label>
                 </div>
                 <div id="paramFuzzerList" class="mutation-table-wrap"></div>
+              </div>
+
+              <div id="fuzzer-token" class="fuzzer-panel">
+                <div class="form-row">
+                  <span class="muted" style="flex:1;">Probes POST /token for PKCE bypass, redirect_uri mismatch, missing client_secret, and code replay.</span>
+                  <button id="batchTokenBtn" class="btn btn-danger" data-tip="Run all 6 Token Endpoint security probes against the Repeater URL and POST body.">Run Token Fuzzer</button>
+                </div>
+                <div class="form-row" style="justify-content:space-between;">
+                  <span id="tokenFuzzerSummary" class="muted mono">Load a POST /token request into Repeater.</span>
+                </div>
+                <div id="tokenFuzzerList" class="mutation-table-wrap"></div>
               </div>
 
               <div id="fuzzer-custom" class="fuzzer-panel">
@@ -234,9 +246,14 @@
             <div class="pane">
               <div class="pane-title">JWT Inspector</div>
               <div class="form-row">
-                <input id="manualJwtInput" class="input mono" type="text" placeholder="Paste raw JWT (eyJ...) to decode" />
+                <input id="manualJwtInput" class="input mono" type="text" placeholder="Paste raw JWT (eyJ...) to decode (or uses trace JWT)" />
                 <button id="inspectJwtBtn" class="btn btn-secondary">Decode</button>
               </div>
+              <div class="form-row">
+                <input id="jwksUriInput" class="input mono" type="text" placeholder="JWKS URI (auto-filled from Discovery, e.g. https://.../jwks.json)" />
+                <button id="verifyJwtBtn" class="btn btn-primary" data-tip="Cryptographically verify JWT signature (RS*/ES*/PS256) against the JWKS URI.">Verify JWKS</button>
+              </div>
+              <div id="jwtVerifyResult" class="muted mono" style="display:none; font-size:11px;"></div>
               <div id="jwtList" class="jwt-list"></div>
             </div>
           </div>

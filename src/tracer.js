@@ -496,3 +496,82 @@ export async function batchTestCustomField(
     results,
   };
 }
+
+/**
+ * Tests a batch of Token Endpoint (/token) mutations against a POST /token request.
+ * @param {TraceStore} store
+ * @param {object} options
+ * @returns {Promise<Array<object>>}
+ */
+export async function batchTestTokenEndpoint(
+  store,
+  { url, headers = {}, body = '', mutations = [], attackerHost = 'attacker.example', cookieJar = null }
+) {
+  const results = [];
+  const reqHeaders = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    ...headers,
+  };
+
+  for (const mut of mutations) {
+    const params = new URLSearchParams(body || '');
+    if (mut.id === 'TOKEN_STRIP_VERIFIER') params.delete('code_verifier');
+    else if (mut.id === 'TOKEN_WRONG_VERIFIER') params.set('code_verifier', 'invalid_pkce_verifier_probe');
+    else if (mut.id === 'TOKEN_MISMATCH_REDIRECT') params.set('redirect_uri', `https://${attackerHost}/callback`);
+    else if (mut.id === 'TOKEN_DROP_REDIRECT') params.delete('redirect_uri');
+    else if (mut.id === 'TOKEN_DROP_CLIENT_SECRET') params.delete('client_secret');
+
+    try {
+      const hops = await sendAndTrace(store, {
+        method: 'POST',
+        url,
+        headers: reqHeaders,
+        body: params.toString(),
+        followRedirects: false,
+        maxHops: 1,
+        cookieJar,
+        label: `token_probe:${mut.id}`,
+      });
+
+      let hop = hops[0];
+      if (mut.id === 'TOKEN_REPLAY_CODE') {
+        const secondHops = await sendAndTrace(store, {
+          method: 'POST',
+          url,
+          headers: reqHeaders,
+          body: params.toString(),
+          followRedirects: false,
+          maxHops: 1,
+          cookieJar,
+          label: `token_probe:${mut.id}_2nd`,
+        });
+        hop = secondHops[0];
+      }
+
+      const status = hop.response.status;
+      const accepted = status >= 200 && status < 300 && /access_token|id_token/i.test(hop.response.body || '');
+
+      results.push({
+        id: mut.id,
+        label: mut.label,
+        description: mut.description,
+        status,
+        accepted,
+        verdict: accepted ? 'ACCEPTED (RISK)' : 'BLOCKED',
+        traceId: hop.id,
+      });
+    } catch (err) {
+      results.push({
+        id: mut.id,
+        label: mut.label,
+        description: mut.description,
+        status: 0,
+        accepted: false,
+        verdict: 'ERROR',
+        error: err.message,
+      });
+    }
+  }
+
+  return results;
+}

@@ -339,3 +339,42 @@ export function getCustomFieldPresets() {
     },
   ];
 }
+
+/**
+ * Generates Token Endpoint (/token) security test mutations.
+ * @returns {Array<{id: string, label: string, description: string}>}
+ */
+export function getTokenEndpointMutations() {
+  return [
+    {
+      id: 'TOKEN_STRIP_VERIFIER',
+      label: 'Strip code_verifier (PKCE bypass)',
+      description: 'Removes code_verifier from the /token body to test if PKCE is enforced.',
+    },
+    {
+      id: 'TOKEN_WRONG_VERIFIER',
+      label: 'Wrong code_verifier',
+      description: 'Replaces code_verifier with an invalid string to verify S256/plain validation.',
+    },
+    {
+      id: 'TOKEN_MISMATCH_REDIRECT',
+      label: 'Mismatch redirect_uri',
+      description: 'Replaces redirect_uri with an attacker URI to test code-to-redirect_uri binding.',
+    },
+    {
+      id: 'TOKEN_DROP_REDIRECT',
+      label: 'Drop redirect_uri',
+      description: 'Removes redirect_uri from the /token request.',
+    },
+    {
+      id: 'TOKEN_DROP_CLIENT_SECRET',
+      label: 'Drop client_secret',
+      description: 'Removes client_secret to test if confidential client auth is enforced.',
+    },
+    {
+      id: 'TOKEN_REPLAY_CODE',
+      label: 'Replay authorization_code (2nd use)',
+      description: 'Sends the exact /token request twice to verify single-use code enforcement.',
+    },
+  ];
+}

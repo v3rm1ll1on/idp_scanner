@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 /**
  * Decodes a base64url-encoded string to UTF-8.
  * @param {string} input
@@ -152,4 +154,74 @@ export function extractAndInspectJwts(source) {
   }
 
   return results;
+}
+
+const ALG_TO_NODE_HASH = {
+  RS256: 'RSA-SHA256',
+  RS384: 'RSA-SHA384',
+  RS512: 'RSA-SHA512',
+  ES256: 'SHA256',
+  ES384: 'SHA384',
+  ES512: 'SHA512',
+  PS256: 'RSA-SHA256',
+};
+
+/**
+ * Verifies a JWT signature against a JWKS key set using Node's native crypto.
+ * @param {string} token
+ * @param {object} jwks
+ * @returns {{verified: boolean, alg: string, kid: string|null, reason: string}}
+ */
+export function verifyJwtWithJwks(token, jwks) {
+  const insp = inspectJwt(token);
+  if (!insp.valid) {
+    return { verified: false, alg: '', kid: null, reason: insp.error || 'Invalid JWT' };
+  }
+
+  const alg = String(insp.header.alg || '');
+  const kid = insp.header.kid || null;
+  if (!alg || alg.toLowerCase() === 'none') {
+    return { verified: false, alg, kid, reason: 'Unsecured alg=none cannot be cryptographically verified' };
+  }
+
+  const hashAlg = ALG_TO_NODE_HASH[alg];
+  if (!hashAlg) {
+    return { verified: false, alg, kid, reason: `Unsupported asymmetric JWS alg "${alg}" (supports RS*/ES*/PS256)` };
+  }
+
+  const keys = Array.isArray(jwks?.keys) ? jwks.keys : [];
+  if (keys.length === 0) {
+    return { verified: false, alg, kid, reason: 'JWKS contains no keys' };
+  }
+
+  const candidates = kid ? keys.filter((k) => k.kid === kid) : keys;
+  const keysToTry = candidates.length > 0 ? candidates : keys;
+
+  const parts = token.trim().split('.');
+  const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, 'utf8');
+  const sigBuf = Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+
+  for (const jwk of keysToTry) {
+    try {
+      const pubKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+      const verifyOpts = alg === 'PS256'
+        ? { key: pubKey, padding: crypto.constants.RSA_PKCS1_PSS_PADDING, saltLength: 32 }
+        : alg.startsWith('ES')
+          ? { key: pubKey, dsaEncoding: 'ieee-p1363' }
+          : pubKey;
+      const ok = crypto.verify(hashAlg, signingInput, verifyOpts, sigBuf);
+      if (ok) {
+        return {
+          verified: true,
+          alg,
+          kid: jwk.kid || kid,
+          reason: `Signature verified against JWKS key${jwk.kid ? ` (${jwk.kid})` : ''}`,
+        };
+      }
+    } catch {
+      // Try next candidate key
+    }
+  }
+
+  return { verified: false, alg, kid, reason: 'Signature did not match any key in JWKS' };
 }

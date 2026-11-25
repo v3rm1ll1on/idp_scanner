@@ -5,10 +5,12 @@ const state = {
   expandedTraces: new Set(),
   redirectMutations: [],
   paramMutations: [],
+  tokenMutations: [],
   customPresets: [],
   customBatchData: null,
   batchResults: new Map(),
   paramBatchResults: new Map(),
+  tokenBatchResults: new Map(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -636,6 +638,9 @@ function renderDiscovery(data) {
   }
 
   const s = data.summary;
+  if (s.jwks_uri && $('jwksUriInput')) {
+    $('jwksUriInput').value = s.jwks_uri;
+  }
   rawDetails.style.display = 'block';
   copyJsonBtn.style.display = 'inline-block';
   $('discoveryOutput').textContent = JSON.stringify(data.raw || data, null, 2);
@@ -1163,6 +1168,86 @@ $('inspectJwtBtn').addEventListener('click', async () => {
   }
 });
 
+$('verifyJwtBtn').addEventListener('click', async () => {
+  let token = $('manualJwtInput').value.trim();
+  if (!token) {
+    const trace = state.traces.find((t) => t.id === state.selectedTraceId);
+    token = trace?.audit?.jwts?.[0]?.token || '';
+  }
+  const jwksUri = $('jwksUriInput').value.trim();
+  const outEl = $('jwtVerifyResult');
+  if (!token || !jwksUri) {
+    outEl.style.display = 'block';
+    outEl.innerHTML = '<span class="badge badge-warn">Provide both a JWT (or select a trace with one) and a JWKS URI.</span>';
+    return;
+  }
+  const res = await api('/api/jwt/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token, jwksUri }),
+  });
+  outEl.style.display = 'block';
+  outEl.innerHTML = `<span class="badge ${res.verified ? 'badge-ok' : 'badge-danger'}">${res.verified ? 'SIGNATURE VALID' : 'SIGNATURE INVALID'}</span> ${escapeHtml(res.reason || res.error || '')}`;
+});
+
+async function loadTokenMutations() {
+  const data = await api('/api/mutations/token-list');
+  state.tokenMutations = data.mutations || [];
+  renderTokenFuzzerTable();
+}
+
+function renderTokenFuzzerTable() {
+  const wrap = $('tokenFuzzerList');
+  const summaryEl = $('tokenFuzzerSummary');
+  if (!state.tokenMutations.length) {
+    wrap.innerHTML = '<div class="muted">No token probes loaded.</div>';
+    return;
+  }
+  if (state.tokenBatchResults.size > 0) {
+    const all = [...state.tokenBatchResults.values()];
+    const acc = all.filter((r) => r.accepted).length;
+    summaryEl.innerHTML = `${all.length} probed · <span style="color:${acc ? '#f87171' : '#4ade80'}">${acc} ACCEPTED (RISK)</span> · ${all.length - acc} blocked`;
+  }
+  wrap.innerHTML = `
+    <table class="mut-table">
+      <thead><tr><th>Probe</th><th>Result</th></tr></thead>
+      <tbody>
+        ${state.tokenMutations
+          .map((m) => {
+            const res = state.tokenBatchResults.get(m.id);
+            const cell = res
+              ? `<span class="badge ${res.accepted ? 'badge-danger' : 'badge-ok'}">${escapeHtml(res.verdict)} (${res.status})</span>`
+              : '<span class="muted">-</span>';
+            return `<tr><td><div style="font-weight:600;">${escapeHtml(m.label)}</div><div class="muted">${escapeHtml(m.description)}</div></td><td>${cell}</td></tr>`;
+          })
+          .join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+$('batchTokenBtn').addEventListener('click', async () => {
+  const url = $('repUrl').value.trim();
+  if (!url) return;
+  let headers = {};
+  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+  const data = await api('/api/mutations/token/batch', {
+    method: 'POST',
+    body: JSON.stringify({
+      url,
+      headers,
+      body: $('repBody').value,
+      attackerHost: $('attackerHostInput').value.trim() || 'attacker.example',
+      useCookieJar: $('repUseCookieJar').checked,
+    }),
+  });
+  state.tokenBatchResults.clear();
+  for (const r of data.results || []) {
+    state.tokenBatchResults.set(r.id, r);
+  }
+  renderTokenFuzzerTable();
+  await loadTraces();
+});
+
 function toBase64Url(bytes) {
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-')
@@ -1448,6 +1533,7 @@ initTooltips();
 initResizers();
 loadMockConfig();
 loadParamMutations();
+loadTokenMutations();
 loadCustomPresets();
 refreshCustomParamOptions();
 refreshRedirectMutations('http://localhost:3000/callback');

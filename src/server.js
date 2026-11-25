@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createMockIdp } from './mock-idp.js';
-import { TraceStore, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField } from './tracer.js';
+import { TraceStore, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField, batchTestTokenEndpoint } from './tracer.js';
 import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
-import { generateRedirectUriMutations, getOAuthParameterMutations, getCustomFieldPresets } from './oauth/payloads.js';
-import { inspectJwt } from './oauth/jwt.js';
+import { generateRedirectUriMutations, getOAuthParameterMutations, getCustomFieldPresets, getTokenEndpointMutations } from './oauth/payloads.js';
+import { inspectJwt, verifyJwtWithJwks } from './oauth/jwt.js';
 import { CookieJar } from './oauth/cookies.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -304,6 +304,56 @@ export function createApp() {
   app.post('/api/jwt/inspect', (req, res) => {
     const { token } = req.body || {};
     res.json(inspectJwt(token));
+  });
+
+  app.post('/api/jwt/verify', async (req, res) => {
+    const { token, jwksUri, jwks } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ error: 'Missing token' });
+    }
+    try {
+      let keySet = jwks;
+      if (!keySet && jwksUri) {
+        const jwksRes = await fetch(jwksUri, { headers: { Accept: 'application/json' } });
+        if (!jwksRes.ok) {
+          return res.status(502).json({ error: `Failed to fetch JWKS: HTTP ${jwksRes.status}` });
+        }
+        keySet = await jwksRes.json();
+      }
+      return res.json(verifyJwtWithJwks(token, keySet));
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/mutations/token-list', (_req, res) => {
+    res.json({ mutations: getTokenEndpointMutations() });
+  });
+
+  app.post('/api/mutations/token/batch', async (req, res) => {
+    const { url, headers = {}, body = '', attackerHost = 'attacker.example', mutationIds, useCookieJar = true } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ error: 'Missing url' });
+    }
+    try {
+      new URL(url);
+      let mutations = getTokenEndpointMutations();
+      if (Array.isArray(mutationIds) && mutationIds.length > 0) {
+        const allow = new Set(mutationIds);
+        mutations = mutations.filter((m) => allow.has(m.id));
+      }
+      const results = await batchTestTokenEndpoint(store, {
+        url,
+        headers,
+        body,
+        mutations,
+        attackerHost,
+        cookieJar: useCookieJar ? cookieJar : null,
+      });
+      return res.json({ results });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
   });
 
   // Local OAuth callback listener (supports both query params and #fragment capture)

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { parseOAuthUrl, parseRawHttpRequest } from '../src/oauth/parser.js';
-import { inspectJwt, encodeBase64Url } from '../src/oauth/jwt.js';
+import { inspectJwt, encodeBase64Url, verifyJwtWithJwks } from '../src/oauth/jwt.js';
 import { RedirectUriMutationType, generateRedirectUriMutations } from '../src/oauth/payloads.js';
 import { auditOAuthContext } from '../src/oauth/analyzer.js';
 import { evaluateRedirectProbe, buildUrlWithRawRedirectUri } from '../src/tracer.js';
@@ -152,4 +153,28 @@ test('buildUrlWithRawRedirectUri preserves %XX sequences without double-encoding
     { isHpp: true }
   );
   assert.ok(hppOut.includes('redirect_uri=https://app.example.com/cb&redirect_uri=https://evil.test/cb'));
+});
+
+test('verifyJwtWithJwks cryptographically verifies RS256 JWTs and rejects tampered payloads', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  jwk.kid = 'rsa-test-1';
+
+  const header = encodeBase64Url({ alg: 'RS256', typ: 'JWT', kid: 'rsa-test-1' });
+  const payload = encodeBase64Url({ sub: 'pentester', iss: 'https://auth.example' });
+  const sig = crypto
+    .sign('RSA-SHA256', Buffer.from(`${header}.${payload}`), privateKey)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const validJwt = `${header}.${payload}.${sig}`;
+  const okRes = verifyJwtWithJwks(validJwt, { keys: [jwk] });
+  assert.equal(okRes.verified, true);
+  assert.equal(okRes.kid, 'rsa-test-1');
+
+  const tamperedPayload = encodeBase64Url({ sub: 'admin', iss: 'https://auth.example' });
+  const badRes = verifyJwtWithJwks(`${header}.${tamperedPayload}.${sig}`, { keys: [jwk] });
+  assert.equal(badRes.verified, false);
 });
