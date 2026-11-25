@@ -501,15 +501,15 @@ async function loadParamMutations() {
   const sel = $('quickMutateSelect');
   if (sel) {
     const authOpts = state.paramMutations
-      .map((m) => `<option value="auth:${escapeHtml(m.id)}">${escapeHtml(m.label)}</option>`)
+      .map((m) => `<option value="auth:${escapeHtml(m.id)}" title="${escapeHtml(m.description)}">${escapeHtml(m.label)}</option>`)
       .join('');
     sel.innerHTML = `
       <option value="">Quick Mutate...</option>
       <optgroup label="Authorize Parameters">${authOpts}</optgroup>
       <optgroup label="Token Endpoint Body (POST)">
-        <option value="tok:strip_verifier">Strip code_verifier</option>
-        <option value="tok:mismatch_redirect">Mismatch redirect_uri</option>
-        <option value="tok:drop_redirect">Drop redirect_uri</option>
+        <option value="tok:strip_verifier" title="Remove code_verifier from POST body to test if /token enforces PKCE.">Strip code_verifier</option>
+        <option value="tok:mismatch_redirect" title="Replace redirect_uri in POST body with attacker URI to test redirect_uri binding.">Mismatch redirect_uri</option>
+        <option value="tok:drop_redirect" title="Remove redirect_uri from POST body.">Drop redirect_uri</option>
       </optgroup>
     `;
   }
