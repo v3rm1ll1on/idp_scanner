@@ -49,6 +49,36 @@ async function loadTraces() {
   renderSequenceDiagram();
 }
 
+function formatTraceTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(11, 23);
+}
+
+function renderTraceParamsHtml(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    const entries = [...u.searchParams.entries()];
+    if (entries.length === 0) return '';
+    return `<div class="trace-params">${entries
+      .slice(0, 6)
+      .map(([k, v]) => {
+        const valCls =
+          k === 'error' || k === 'error_description'
+            ? 'tp-v-err'
+            : k === 'code' || k === 'access_token' || k === 'id_token'
+              ? 'tp-v-cred'
+              : 'tp-v';
+        const shortVal = v.length > 26 ? `${v.slice(0, 23)}...` : v;
+        return `<span class="tp-pair" title="${escapeHtml(`${k}=${v}`)}"><span class="tp-k">${escapeHtml(k)}</span><span class="tp-eq">=</span><span class="${valCls}">${escapeHtml(shortVal)}</span></span>`;
+      })
+      .join('')}${entries.length > 6 ? `<span class="muted">+${entries.length - 6}</span>` : ''}</div>`;
+  } catch {
+    return '';
+  }
+}
+
 function renderTraceList() {
   $('traceCount').textContent = String(state.traces.length);
   const container = $('traceList');
@@ -64,6 +94,7 @@ function renderTraceList() {
       const urlObj = (() => {
         try { return new URL(t.request.url); } catch { return { pathname: t.request.url }; }
       })();
+      const timeStr = formatTraceTime(t.timestamp);
       return `
         <div class="trace-item ${active}" data-id="${t.id}">
           <div class="trace-row">
@@ -71,10 +102,11 @@ function renderTraceList() {
               <span class="badge badge-muted">${escapeHtml(t.request.method)}</span>
               <span class="badge ${statusBadgeClass(t.response.status)}">${t.response.status || 'ERR'}</span>
             </span>
-            <span class="muted mono">${t.durationMs}ms${findingsCount ? ` · <span style="color:#fbbf24">${findingsCount}f</span>` : ''}</span>
+            <span class="trace-time" title="${escapeHtml(t.timestamp || '')}">${escapeHtml(timeStr)} · ${t.durationMs}ms${findingsCount ? ` · <span style="color:#fbbf24">${findingsCount}f</span>` : ''}</span>
           </div>
-          <div class="trace-url" title="${escapeHtml(t.request.url)}">${escapeHtml(urlObj.pathname + (urlObj.search || ''))}</div>
-          <div class="muted" style="font-size:11px;">${escapeHtml(t.flowKind || t.label)}</div>
+          <div class="trace-path" title="${escapeHtml(t.request.url)}">${escapeHtml(urlObj.pathname)}</div>
+          ${renderTraceParamsHtml(t.request.url)}
+          <div class="muted" style="font-size:10.5px;">${escapeHtml(t.flowKind || t.label)}</div>
         </div>
       `;
     })
