@@ -133,6 +133,7 @@ export async function sendAndTrace(store, options) {
       method: currentMethod,
       headers: reqHeaders,
       redirect: 'manual',
+      signal: AbortSignal.timeout(15000),
     };
     if (currentBody && currentMethod !== 'GET' && currentMethod !== 'HEAD') {
       fetchOptions.body = currentBody;
@@ -508,10 +509,10 @@ export async function batchTestTokenEndpoint(
   { url, headers = {}, body = '', mutations = [], attackerHost = 'attacker.example', cookieJar = null }
 ) {
   const results = [];
-  const reqHeaders = {
-    'Content-Type': 'application/x-www-form-urlencoded',
-    ...headers,
-  };
+  const reqHeaders = { ...headers };
+  delete reqHeaders['content-type'];
+  delete reqHeaders['Content-Type'];
+  reqHeaders['Content-Type'] = 'application/x-www-form-urlencoded';
 
   for (const mut of mutations) {
     const params = new URLSearchParams(body || '');

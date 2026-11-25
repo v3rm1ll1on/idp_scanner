@@ -177,4 +177,9 @@ test('verifyJwtWithJwks cryptographically verifies RS256 JWTs and rejects tamper
   const tamperedPayload = encodeBase64Url({ sub: 'admin', iss: 'https://auth.example' });
   const badRes = verifyJwtWithJwks(`${header}.${tamperedPayload}.${sig}`, { keys: [jwk] });
   assert.equal(badRes.verified, false);
+
+  const wrongKidHeader = encodeBase64Url({ alg: 'RS256', typ: 'JWT', kid: 'unknown-kid' });
+  const wrongKidRes = verifyJwtWithJwks(`${wrongKidHeader}.${payload}.${sig}`, { keys: [jwk] });
+  assert.equal(wrongKidRes.verified, false);
+  assert.ok(wrongKidRes.reason.includes('unknown-kid'));
 });

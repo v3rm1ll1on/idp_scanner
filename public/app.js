@@ -20,7 +20,23 @@ async function api(path, options = {}) {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok && !data.error) {
+    data.error = `HTTP ${res.status} ${res.statusText}`;
+  }
+  return data;
+}
+
+async function withBusyButton(btn, busyText, fn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyText;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
 }
 
 function statusBadgeClass(status) {
@@ -1028,22 +1044,28 @@ $('batchCustomBtn').addEventListener('click', async () => {
   let headers = {};
   try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
 
-  const data = await api('/api/mutations/custom/batch', {
-    method: 'POST',
-    body: JSON.stringify({
-      method: $('repMethod').value,
-      baseUrl,
-      headers,
-      body: $('repBody').value,
-      targetLocation,
-      paramName,
-      payloads,
-      useCookieJar: $('repUseCookieJar').checked,
-    }),
+  await withBusyButton($('batchCustomBtn'), 'Fuzzing...', async () => {
+    const data = await api('/api/mutations/custom/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        method: $('repMethod').value,
+        baseUrl,
+        headers,
+        body: $('repBody').value,
+        targetLocation,
+        paramName,
+        payloads,
+        useCookieJar: $('repUseCookieJar').checked,
+      }),
+    });
+    if (data.error) {
+      $('customFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
+      return;
+    }
+    state.customBatchData = data;
+    renderCustomFuzzerTable();
+    await loadTraces();
   });
-  state.customBatchData = data;
-  renderCustomFuzzerTable();
-  await loadTraces();
 });
 
 $('clearCookiesBtn').addEventListener('click', async () => {
@@ -1128,16 +1150,22 @@ $('batchParamsBtn').addEventListener('click', async () => {
   const baseUrl = $('repUrl').value.trim();
   if (!baseUrl) return;
   const useCookieJar = $('repUseCookieJar').checked;
-  const data = await api('/api/mutations/params/batch', {
-    method: 'POST',
-    body: JSON.stringify({ baseUrl, useCookieJar }),
+  await withBusyButton($('batchParamsBtn'), 'Running...', async () => {
+    const data = await api('/api/mutations/params/batch', {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl, useCookieJar }),
+    });
+    if (data.error) {
+      $('paramFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
+      return;
+    }
+    state.paramBatchResults.clear();
+    for (const r of data.results || []) {
+      state.paramBatchResults.set(r.id, r);
+    }
+    renderParamFuzzerTable();
+    await loadTraces();
   });
-  state.paramBatchResults.clear();
-  for (const r of data.results || []) {
-    state.paramBatchResults.set(r.id, r);
-  }
-  renderParamFuzzerTable();
-  await loadTraces();
 });
 
 $('batchRedirectBtn').addEventListener('click', async () => {
@@ -1145,16 +1173,22 @@ $('batchRedirectBtn').addEventListener('click', async () => {
   if (!baseUrl) return;
   const attackerHost = $('attackerHostInput').value.trim() || 'attacker.example';
   const useCookieJar = $('repUseCookieJar').checked;
-  const data = await api('/api/mutations/redirect-uri/batch', {
-    method: 'POST',
-    body: JSON.stringify({ baseUrl, attackerHost, useCookieJar }),
+  await withBusyButton($('batchRedirectBtn'), 'Probing...', async () => {
+    const data = await api('/api/mutations/redirect-uri/batch', {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl, attackerHost, useCookieJar }),
+    });
+    if (data.error) {
+      $('redirectFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
+      return;
+    }
+    state.batchResults.clear();
+    for (const r of data.results || []) {
+      state.batchResults.set(r.id, r);
+    }
+    renderRedirectMutations();
+    await loadTraces();
   });
-  state.batchResults.clear();
-  for (const r of data.results || []) {
-    state.batchResults.set(r.id, r);
-  }
-  renderRedirectMutations();
-  await loadTraces();
 });
 
 $('inspectJwtBtn').addEventListener('click', async () => {
@@ -1230,22 +1264,28 @@ $('batchTokenBtn').addEventListener('click', async () => {
   if (!url) return;
   let headers = {};
   try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
-  const data = await api('/api/mutations/token/batch', {
-    method: 'POST',
-    body: JSON.stringify({
-      url,
-      headers,
-      body: $('repBody').value,
-      attackerHost: $('attackerHostInput').value.trim() || 'attacker.example',
-      useCookieJar: $('repUseCookieJar').checked,
-    }),
+  await withBusyButton($('batchTokenBtn'), 'Probing...', async () => {
+    const data = await api('/api/mutations/token/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        url,
+        headers,
+        body: $('repBody').value,
+        attackerHost: $('attackerHostInput').value.trim() || 'attacker.example',
+        useCookieJar: $('repUseCookieJar').checked,
+      }),
+    });
+    if (data.error) {
+      $('tokenFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
+      return;
+    }
+    state.tokenBatchResults.clear();
+    for (const r of data.results || []) {
+      state.tokenBatchResults.set(r.id, r);
+    }
+    renderTokenFuzzerTable();
+    await loadTraces();
   });
-  state.tokenBatchResults.clear();
-  for (const r of data.results || []) {
-    state.tokenBatchResults.set(r.id, r);
-  }
-  renderTokenFuzzerTable();
-  await loadTraces();
 });
 
 function toBase64Url(bytes) {

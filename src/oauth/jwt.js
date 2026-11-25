@@ -195,13 +195,16 @@ export function verifyJwtWithJwks(token, jwks) {
   }
 
   const candidates = kid ? keys.filter((k) => k.kid === kid) : keys;
-  const keysToTry = candidates.length > 0 ? candidates : keys;
+  if (kid && candidates.length === 0) {
+    return { verified: false, alg, kid, reason: `No key with kid="${kid}" found in JWKS` };
+  }
 
   const parts = token.trim().split('.');
   const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, 'utf8');
-  const sigBuf = Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  const sigBuf = Buffer.from(parts[2], 'base64url');
 
-  for (const jwk of keysToTry) {
+  for (const jwk of candidates) {
+    if (jwk.kty === 'oct') continue;
     try {
       const pubKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
       const verifyOpts = alg === 'PS256'
