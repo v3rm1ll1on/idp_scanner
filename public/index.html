@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OAuth Workbench — Analytical OAuth 2.0 / OIDC Inspector</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-title">OAuth Workbench</span>
+      <span class="badge badge-muted">v0.1.0</span>
+    </div>
+
+    <div class="topbar-controls">
+      <input id="issuerInput" class="input mono" type="text" value="http://localhost:3000/mock-idp" placeholder="Issuer or /.well-known/openid-configuration URL" />
+      <button id="discoverBtn" class="btn btn-secondary">Discover</button>
+      <button id="demoFlowBtn" class="btn btn-primary">Run Demo Flow</button>
+      <button id="clearTracesBtn" class="btn btn-ghost">Clear</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="panel-header">
+        <span>HTTP Trace Timeline</span>
+        <span id="traceCount" class="badge badge-muted">0</span>
+      </div>
+      <div id="traceList" class="trace-list"></div>
+
+      <details class="mock-config" open>
+        <summary class="panel-header clickable">Mock IdP Security Toggles</summary>
+        <div class="mock-toggles" id="mockToggles">
+          <label><input type="checkbox" data-key="allowOpenRedirect" /> allowOpenRedirect</label>
+          <label><input type="checkbox" data-key="allowMissingState" /> allowMissingState</label>
+          <label><input type="checkbox" data-key="allowImplicitDowngrade" /> allowImplicitDowngrade</label>
+          <label><input type="checkbox" data-key="allowPkceDowngrade" /> allowPkceDowngrade</label>
+          <label><input type="checkbox" data-key="allowAlgNone" /> allowAlgNone</label>
+        </div>
+      </details>
+    </aside>
+
+    <main class="main">
+      <section class="parser-bar">
+        <textarea id="parseInput" class="input mono parse-textarea" rows="2" placeholder="Paste OAuth URL (https://...) or raw HTTP request (GET /authorize?... HTTP/1.1&#10;Host: ...)"></textarea>
+        <button id="parseBtn" class="btn btn-secondary">Parse &amp; Load</button>
+      </section>
+
+      <section class="diagram-section">
+        <div class="panel-header">
+          <span>Sequence Visualizer</span>
+          <span id="diagramSubtitle" class="muted mono">Select a trace or run a flow</span>
+        </div>
+        <div id="sequenceDiagram" class="diagram-canvas"></div>
+      </section>
+
+      <section class="workbench-tabs">
+        <div class="tab-bar">
+          <button class="tab active" data-tab="inspector">Inspector</button>
+          <button class="tab" data-tab="repeater">Repeater &amp; Redirect-URI Fuzzer</button>
+          <button class="tab" data-tab="audit">Tokens &amp; Audit</button>
+          <button class="tab" data-tab="discovery">Discovery</button>
+        </div>
+
+        <div class="tab-content active" id="tab-inspector">
+          <div class="split-2">
+            <div class="pane">
+              <div class="pane-title">Request</div>
+              <pre id="reqSummary" class="code-block">No trace selected.</pre>
+              <div class="pane-subtitle">OAuth Parameters</div>
+              <pre id="reqOAuthParams" class="code-block">{}</pre>
+              <div class="pane-subtitle">Headers</div>
+              <pre id="reqHeaders" class="code-block">{}</pre>
+              <div class="pane-subtitle">Body</div>
+              <pre id="reqBody" class="code-block"></pre>
+            </div>
+            <div class="pane">
+              <div class="pane-title">Response <span id="resStatusBadge"></span></div>
+              <pre id="resSummary" class="code-block">No trace selected.</pre>
+              <div class="pane-subtitle">Response / Redirect OAuth Parameters</div>
+              <pre id="resOAuthParams" class="code-block">{}</pre>
+              <div class="pane-subtitle">Headers</div>
+              <pre id="resHeaders" class="code-block">{}</pre>
+              <div class="pane-subtitle">Body</div>
+              <pre id="resBody" class="code-block"></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-repeater">
+          <div class="split-2">
+            <div class="pane">
+              <div class="pane-title">Request Editor</div>
+              <div class="form-row">
+                <select id="repMethod" class="input mono" style="width: 110px;">
+                  <option>GET</option>
+                  <option>POST</option>
+                  <option>PUT</option>
+                  <option>DELETE</option>
+                </select>
+                <input id="repUrl" class="input mono" type="text" placeholder="https://auth.target.com/authorize?..." />
+                <button id="repSendBtn" class="btn btn-primary">Send</button>
+              </div>
+              <label class="checkbox-inline">
+                <input id="repFollowRedirects" type="checkbox" /> Follow redirects (step-by-step trace)
+              </label>
+
+              <div class="pane-subtitle">Quick OAuth Parameter Mutations</div>
+              <div id="paramMutationBtns" class="chip-row"></div>
+
+              <div class="pane-subtitle">Headers (JSON)</div>
+              <textarea id="repHeaders" class="input mono code-edit" rows="4">{}</textarea>
+
+              <div class="pane-subtitle">Body</div>
+              <textarea id="repBody" class="input mono code-edit" rows="4"></textarea>
+            </div>
+
+            <div class="pane">
+              <div class="pane-title">Redirect-URI Mutation Matrix</div>
+              <div class="form-row">
+                <input id="attackerHostInput" class="input mono" type="text" value="attacker.example" placeholder="Attacker host" />
+                <button id="refreshMutationsBtn" class="btn btn-secondary">Generate</button>
+                <button id="batchRedirectBtn" class="btn btn-danger">Run Batch Probe</button>
+              </div>
+              <div id="redirectMutationList" class="mutation-table-wrap"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-audit">
+          <div class="split-2">
+            <div class="pane">
+              <div class="pane-title">Security Findings</div>
+              <div id="auditFindings" class="findings-list">Select a trace or parse a request.</div>
+            </div>
+            <div class="pane">
+              <div class="pane-title">JWT Inspector</div>
+              <div class="form-row">
+                <input id="manualJwtInput" class="input mono" type="text" placeholder="Paste raw JWT (eyJ...) to decode" />
+                <button id="inspectJwtBtn" class="btn btn-secondary">Decode</button>
+              </div>
+              <div id="jwtList" class="jwt-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-discovery">
+          <div class="pane">
+            <div class="pane-title">OIDC / OAuth2 Discovery Document</div>
+            <pre id="discoveryOutput" class="code-block">Click "Discover" in the top bar to fetch /.well-known/openid-configuration.</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

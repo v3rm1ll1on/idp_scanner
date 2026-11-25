@@ -1,0 +1,259 @@
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import { createMockIdp } from './mock-idp.js';
+import { TraceStore, sendAndTrace, batchTestRedirectUris } from './tracer.js';
+import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/parser.js';
+import { auditOAuthContext } from './oauth/analyzer.js';
+import { generateRedirectUriMutations, getOAuthParameterMutations } from './oauth/payloads.js';
+import { inspectJwt } from './oauth/jwt.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Builds the Express application for OAuth Workbench.
+ * @returns {{app: express.Express, store: TraceStore, mockIdp: object}}
+ */
+export function createApp() {
+  const app = express();
+  const store = new TraceStore();
+  const mockIdp = createMockIdp();
+
+  app.use(express.json({ limit: '2mb' }));
+  app.use('/mock-idp', mockIdp.router);
+  app.use(express.static(path.join(__dirname, '..', 'public')));
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true, version: '0.1.0' });
+  });
+
+  app.get('/api/traces', (_req, res) => {
+    res.json({ traces: store.list() });
+  });
+
+  app.delete('/api/traces', (_req, res) => {
+    store.clear();
+    res.json({ cleared: true });
+  });
+
+  app.post('/api/parse', (req, res) => {
+    const { input } = req.body || {};
+    if (!input || typeof input !== 'string') {
+      return res.status(400).json({ error: 'Missing input string' });
+    }
+
+    try {
+      const trimmed = input.trim();
+      const isUrl = /^https?:\/\//i.test(trimmed);
+      const parsed = isUrl
+        ? { method: 'GET', headers: {}, body: '', ...parseOAuthUrl(trimmed) }
+        : parseRawHttpRequest(trimmed);
+
+      const audit = auditOAuthContext({ oauthParams: parsed.oauthParams });
+      const baseRedirect = parsed.oauthParams.redirect_uri || 'http://localhost:3000/callback';
+      const redirectMutations = generateRedirectUriMutations(baseRedirect);
+      const paramMutations = getOAuthParameterMutations();
+
+      return res.json({
+        parsed,
+        audit,
+        redirectMutations,
+        paramMutations,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/discover', async (req, res) => {
+    const { issuerUrl } = req.body || {};
+    if (!issuerUrl) {
+      return res.status(400).json({ error: 'Missing issuerUrl' });
+    }
+
+    const base = issuerUrl.replace(/\/+$/, '');
+    const candidates = base.includes('/.well-known/')
+      ? [base]
+      : [`${base}/.well-known/openid-configuration`, `${base}/.well-known/oauth-authorization-server`];
+
+    for (const candidate of candidates) {
+      try {
+        const hops = await sendAndTrace(store, {
+          method: 'GET',
+          url: candidate,
+          headers: { Accept: 'application/json' },
+          followRedirects: true,
+          label: 'oidc_discovery',
+        });
+        const last = hops[hops.length - 1];
+        if (last && last.response.status === 200) {
+          const doc = JSON.parse(last.response.body);
+          return res.json({
+            endpoint: candidate,
+            summary: summarizeDiscovery(doc),
+            raw: doc,
+            traces: hops,
+          });
+        }
+      } catch {
+        // Try next discovery candidate
+      }
+    }
+
+    return res.status(404).json({ error: 'No OIDC/OAuth2 discovery document found at well-known endpoints' });
+  });
+
+  app.post('/api/send', async (req, res) => {
+    const { method = 'GET', url, headers = {}, body = '', followRedirects = false, label = 'repeater' } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ error: 'Missing url' });
+    }
+    try {
+      const hops = await sendAndTrace(store, {
+        method,
+        url,
+        headers,
+        body,
+        followRedirects: Boolean(followRedirects),
+        label,
+      });
+      return res.json({ hops });
+    } catch (err) {
+      return res.status(502).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/mutations/redirect-uri', (req, res) => {
+    const { baseRedirectUri = 'http://localhost:3000/callback', attackerHost = 'attacker.example' } = req.body || {};
+    res.json({ mutations: generateRedirectUriMutations(baseRedirectUri, attackerHost) });
+  });
+
+  app.post('/api/mutations/redirect-uri/batch', async (req, res) => {
+    const { baseUrl, headers = {}, attackerHost = 'attacker.example', mutationIds } = req.body || {};
+    if (!baseUrl) {
+      return res.status(400).json({ error: 'Missing baseUrl' });
+    }
+    try {
+      const parsed = parseOAuthUrl(baseUrl);
+      const baseRedirect = parsed.oauthParams.redirect_uri || 'http://localhost:3000/callback';
+      let mutations = generateRedirectUriMutations(baseRedirect, attackerHost);
+      if (Array.isArray(mutationIds) && mutationIds.length > 0) {
+        const allow = new Set(mutationIds);
+        mutations = mutations.filter((m) => allow.has(m.id));
+      }
+      const results = await batchTestRedirectUris(store, { baseUrl, headers, mutations });
+      return res.json({ results });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/jwt/inspect', (req, res) => {
+    const { token } = req.body || {};
+    res.json(inspectJwt(token));
+  });
+
+  // Local OAuth callback listener (supports both query params and #fragment capture)
+  app.get('/callback', (req, res) => {
+    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const parsed = parseOAuthUrl(fullUrl);
+    const audit = auditOAuthContext({ oauthParams: parsed.oauthParams, status: 200 });
+
+    store.add({
+      id: crypto.randomUUID(),
+      traceGroupId: crypto.randomUUID(),
+      hopIndex: 0,
+      timestamp: new Date().toISOString(),
+      label: 'local_callback_listener',
+      flowKind: parsed.flowKind,
+      durationMs: 0,
+      request: {
+        method: 'GET',
+        url: fullUrl,
+        headers: req.headers,
+        body: '',
+        oauthParams: parsed.oauthParams,
+      },
+      response: {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'text/html' },
+        location: null,
+        body: '',
+        oauthParams: parsed.oauthParams,
+      },
+      audit,
+    });
+
+    res.type('html').send(`<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>OAuth Callback Captured</title></head>
+<body style="font-family: ui-monospace, monospace; background:#0f172a; color:#e2e8f0; padding:24px;">
+  <h2>OAuth Callback Captured</h2>
+  <p>Query parameters were logged to OAuth Workbench.</p>
+  <pre id="out"></pre>
+  <script>
+    const out = document.getElementById('out');
+    out.textContent = window.location.href;
+    if (window.location.hash && window.location.hash.length > 1) {
+      fetch('/api/callback-fragment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullUrl: window.location.href })
+      });
+    }
+  </script>
+</body>
+</html>`);
+  });
+
+  app.post('/api/callback-fragment', (req, res) => {
+    const { fullUrl } = req.body || {};
+    if (!fullUrl) return res.status(400).json({ error: 'Missing fullUrl' });
+    try {
+      const parsed = parseOAuthUrl(fullUrl);
+      const audit = auditOAuthContext({ oauthParams: parsed.oauthParams, status: 200 });
+      store.add({
+        id: crypto.randomUUID(),
+        traceGroupId: crypto.randomUUID(),
+        hopIndex: 0,
+        timestamp: new Date().toISOString(),
+        label: 'local_callback_fragment',
+        flowKind: parsed.flowKind,
+        durationMs: 0,
+        request: {
+          method: 'GET',
+          url: fullUrl,
+          headers: {},
+          body: '',
+          oauthParams: parsed.oauthParams,
+        },
+        response: {
+          status: 200,
+          statusText: 'Fragment Captured',
+          headers: {},
+          location: null,
+          body: '',
+          oauthParams: parsed.oauthParams,
+        },
+        audit,
+      });
+      return res.json({ captured: true, oauthParams: parsed.oauthParams });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  return { app, store, mockIdp };
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  const port = Number(process.env.PORT || 3000);
+  const { app } = createApp();
+  app.listen(port, () => {
+    console.log(`OAuth Workbench listening on http://localhost:${port}`);
+    console.log(`Mock IdP available at http://localhost:${port}/mock-idp/.well-known/openid-configuration`);
+  });
+}
