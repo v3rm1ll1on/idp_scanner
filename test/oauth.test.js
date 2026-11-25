@@ -4,7 +4,7 @@ import { parseOAuthUrl, parseRawHttpRequest } from '../src/oauth/parser.js';
 import { inspectJwt, encodeBase64Url } from '../src/oauth/jwt.js';
 import { RedirectUriMutationType, generateRedirectUriMutations } from '../src/oauth/payloads.js';
 import { auditOAuthContext } from '../src/oauth/analyzer.js';
-import { evaluateRedirectProbe } from '../src/tracer.js';
+import { evaluateRedirectProbe, buildUrlWithRawRedirectUri } from '../src/tracer.js';
 import { parseSetCookieHeader, CookieJar } from '../src/oauth/cookies.js';
 
 test('parseOAuthUrl extracts query and fragment parameters', () => {
@@ -121,4 +121,13 @@ test('parseSetCookieHeader and CookieJar handle attributes, scoping, and expiry'
 
   jar.clear();
   assert.equal(jar.list().length, 0);
+});
+
+test('buildUrlWithRawRedirectUri preserves %XX sequences without double-encoding', () => {
+  const out = buildUrlWithRawRedirectUri(
+    'https://auth.example.com/authorize?client_id=c1&redirect_uri=https://app.example.com/cb&state=s1',
+    'https://app.example.com/cb%0d%0aX-Test:%201#frag'
+  );
+  assert.ok(out.includes('redirect_uri=https://app.example.com/cb%0d%0aX-Test:%201%23frag'));
+  assert.ok(!out.includes('%250d%250a'));
 });

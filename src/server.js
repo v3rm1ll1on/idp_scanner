@@ -170,7 +170,13 @@ export function createApp() {
   });
 
   app.post('/api/mutations/redirect-uri/batch', async (req, res) => {
-    const { baseUrl, headers = {}, attackerHost = 'attacker.example', mutationIds } = req.body || {};
+    const {
+      baseUrl,
+      headers = {},
+      attackerHost = 'attacker.example',
+      mutationIds,
+      useCookieJar = true,
+    } = req.body || {};
     if (!baseUrl) {
       return res.status(400).json({ error: 'Missing baseUrl' });
     }
@@ -182,7 +188,13 @@ export function createApp() {
         const allow = new Set(mutationIds);
         mutations = mutations.filter((m) => allow.has(m.id));
       }
-      const results = await batchTestRedirectUris(store, { baseUrl, headers, mutations, attackerHost });
+      const results = await batchTestRedirectUris(store, {
+        baseUrl,
+        headers,
+        mutations,
+        attackerHost,
+        cookieJar: useCookieJar ? cookieJar : null,
+      });
       return res.json({ results });
     } catch (err) {
       return res.status(400).json({ error: err.message });
@@ -291,9 +303,10 @@ export function createApp() {
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const port = Number(process.env.PORT || 3000);
+  const host = process.env.HOST || '127.0.0.1';
   const { app } = createApp();
-  app.listen(port, () => {
-    console.log(`OAuth Workbench listening on http://localhost:${port}`);
-    console.log(`Mock IdP available at http://localhost:${port}/mock-idp/.well-known/openid-configuration`);
+  app.listen(port, host, () => {
+    console.log(`OAuth Workbench listening on http://${host}:${port}`);
+    console.log(`Mock IdP available at http://${host}:${port}/mock-idp/.well-known/openid-configuration`);
   });
 }

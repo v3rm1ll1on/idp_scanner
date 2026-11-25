@@ -565,13 +565,20 @@ $('clearCookiesBtn').addEventListener('click', async () => {
 
 $('refreshMutationsBtn').addEventListener('click', () => refreshRedirectMutations());
 
+$('repOpenBrowserBtn').addEventListener('click', () => {
+  const url = $('repUrl').value.trim();
+  if (!url) return;
+  window.open(url, '_blank', 'noopener');
+});
+
 $('batchRedirectBtn').addEventListener('click', async () => {
   const baseUrl = $('repUrl').value.trim();
   if (!baseUrl) return;
   const attackerHost = $('attackerHostInput').value.trim() || 'attacker.example';
+  const useCookieJar = $('repUseCookieJar').checked;
   const data = await api('/api/mutations/redirect-uri/batch', {
     method: 'POST',
-    body: JSON.stringify({ baseUrl, attackerHost }),
+    body: JSON.stringify({ baseUrl, attackerHost, useCookieJar }),
   });
   state.batchResults.clear();
   for (const r of data.results || []) {

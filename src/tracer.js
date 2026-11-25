@@ -227,25 +227,46 @@ export async function sendAndTrace(store, options) {
 }
 
 /**
+ * Replaces or appends redirect_uri without double-encoding existing %XX sequences.
+ * @param {string} baseUrl
+ * @param {string} rawRedirectUri
+ * @returns {string}
+ */
+export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri) {
+  const urlObj = new URL(baseUrl);
+  urlObj.searchParams.delete('redirect_uri');
+  const base = urlObj.toString();
+  const sep = base.includes('?') ? (base.endsWith('?') || base.endsWith('&') ? '' : '&') : '?';
+  const safeVal = String(rawRedirectUri)
+    .replace(/&/g, '%26')
+    .replace(/#/g, '%23')
+    .replace(/ /g, '%20');
+  return `${base}${sep}redirect_uri=${safeVal}`;
+}
+
+/**
  * Tests a batch of redirect_uri mutations against an authorization URL without following redirects.
  * @param {TraceStore} store
  * @param {object} options
  * @returns {Promise<Array<object>>}
  */
-export async function batchTestRedirectUris(store, { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example' }) {
+export async function batchTestRedirectUris(
+  store,
+  { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example', cookieJar = null }
+) {
   const results = [];
 
   for (const mut of mutations) {
-    const targetUrl = new URL(baseUrl);
-    targetUrl.searchParams.set('redirect_uri', mut.uri);
+    const targetUrl = buildUrlWithRawRedirectUri(baseUrl, mut.uri);
 
     try {
       const hops = await sendAndTrace(store, {
         method: 'GET',
-        url: targetUrl.toString(),
+        url: targetUrl,
         headers,
         followRedirects: false,
         maxHops: 1,
+        cookieJar,
         label: `redirect_probe:${mut.id}`,
       });
 
