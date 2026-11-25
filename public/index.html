@@ -135,19 +135,14 @@
                 <button id="clearCookiesBtn" class="btn btn-ghost" style="padding:3px 7px;" data-tip="Empty all cookies stored in the session Cookie Jar.">Clear Cookies</button>
               </div>
 
-              <div class="pane-subtitle">Quick OAuth Parameter Mutations &amp; Generators</div>
-              <div class="chip-row" style="margin-bottom:4px;">
-                <button id="genPkceBtn" class="chip" data-tip="Generate a random code_verifier and SHA-256 code_challenge (S256) into the URL.">Gen PKCE (S256)</button>
-                <button id="genStateBtn" class="chip" data-tip="Generate high-entropy state and nonce parameters into the URL.">Gen State &amp; Nonce</button>
+              <div class="form-row" style="gap:6px; margin-top:2px;">
+                <button id="genPkceBtn" class="btn btn-secondary" data-tip="Generate a random code_verifier and SHA-256 code_challenge (S256) into the URL.">Gen PKCE (S256)</button>
+                <button id="genStateBtn" class="btn btn-secondary" data-tip="Generate high-entropy state and nonce parameters into the URL.">Gen State &amp; Nonce</button>
+                <select id="quickMutateSelect" class="input mono" style="flex:1;" data-tip="Apply a quick OAuth or Token-Endpoint mutation to the current request.">
+                  <option value="">Quick Mutate...</option>
+                </select>
               </div>
               <div id="pkceVerifierBox" class="muted mono" style="display:none; font-size:11px;"></div>
-              <div id="paramMutationBtns" class="chip-row"></div>
-              <div class="pane-subtitle">Token Endpoint Body Mutations (POST /token)</div>
-              <div class="chip-row">
-                <button id="tokStripVerifierBtn" class="chip" data-tip="Remove code_verifier from POST body to test if /token enforces PKCE.">Strip code_verifier</button>
-                <button id="tokMismatchRedirectBtn" class="chip" data-tip="Replace redirect_uri in POST body with attacker URI to test redirect_uri binding.">Mismatch redirect_uri</button>
-                <button id="tokDropRedirectBtn" class="chip" data-tip="Remove redirect_uri from POST body.">Drop redirect_uri</button>
-              </div>
               <div id="replayResultBox" class="muted mono" style="display:none; font-size:11px;"></div>
 
               <div class="pane-subtitle">Headers (JSON)</div>

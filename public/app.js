@@ -497,16 +497,23 @@ async function loadParamMutations() {
     body: JSON.stringify({ input: 'https://example.com/authorize?client_id=demo&response_type=code' }),
   });
   state.paramMutations = res.paramMutations || [];
-  const container = $('paramMutationBtns');
-  container.innerHTML = state.paramMutations
-    .map((m) => `<button class="chip" data-patch='${escapeHtml(JSON.stringify(m.patch))}' title="${escapeHtml(m.description)}">${escapeHtml(m.label)}</button>`)
-    .join('');
 
-  container.querySelectorAll('.chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      applyParamPatchToRepeater(JSON.parse(chip.dataset.patch));
-    });
-  });
+  const sel = $('quickMutateSelect');
+  if (sel) {
+    const authOpts = state.paramMutations
+      .map((m) => `<option value="auth:${escapeHtml(m.id)}">${escapeHtml(m.label)}</option>`)
+      .join('');
+    sel.innerHTML = `
+      <option value="">Quick Mutate...</option>
+      <optgroup label="Authorize Parameters">${authOpts}</optgroup>
+      <optgroup label="Token Endpoint Body (POST)">
+        <option value="tok:strip_verifier">Strip code_verifier</option>
+        <option value="tok:mismatch_redirect">Mismatch redirect_uri</option>
+        <option value="tok:drop_redirect">Drop redirect_uri</option>
+      </optgroup>
+    `;
+  }
+
   renderParamFuzzerTable();
 }
 
@@ -913,15 +920,22 @@ function mutateTokenBody(mutator) {
   $('repBody').value = params.toString();
 }
 
-$('tokStripVerifierBtn').addEventListener('click', () => {
-  mutateTokenBody((p) => p.delete('code_verifier'));
-});
-$('tokMismatchRedirectBtn').addEventListener('click', () => {
-  const host = $('attackerHostInput').value.trim() || 'attacker.example';
-  mutateTokenBody((p) => p.set('redirect_uri', `https://${host}/callback`));
-});
-$('tokDropRedirectBtn').addEventListener('click', () => {
-  mutateTokenBody((p) => p.delete('redirect_uri'));
+$('quickMutateSelect').addEventListener('change', (e) => {
+  const val = e.target.value;
+  if (!val) return;
+  if (val.startsWith('auth:')) {
+    const id = val.slice(5);
+    const mut = state.paramMutations.find((m) => m.id === id);
+    if (mut) applyParamPatchToRepeater(mut.patch);
+  } else if (val === 'tok:strip_verifier') {
+    mutateTokenBody((p) => p.delete('code_verifier'));
+  } else if (val === 'tok:mismatch_redirect') {
+    const host = $('attackerHostInput').value.trim() || 'attacker.example';
+    mutateTokenBody((p) => p.set('redirect_uri', `https://${host}/callback`));
+  } else if (val === 'tok:drop_redirect') {
+    mutateTokenBody((p) => p.delete('redirect_uri'));
+  }
+  e.target.value = '';
 });
 
 document.querySelectorAll('.fuzzer-tab').forEach((tab) => {
