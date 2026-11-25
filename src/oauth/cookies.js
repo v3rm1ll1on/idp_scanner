@@ -81,6 +81,13 @@ export class CookieJar {
         this.cookies.delete(key);
         continue;
       }
+      if (parsed.maxAge === null && parsed.expires) {
+        const expMs = Date.parse(parsed.expires);
+        if (!Number.isNaN(expMs) && expMs <= Date.now()) {
+          this.cookies.delete(key);
+          continue;
+        }
+      }
 
       this.cookies.set(key, {
         ...parsed,

@@ -90,11 +90,16 @@ export function createApp() {
 
   app.post('/api/discover', async (req, res) => {
     const { issuerUrl } = req.body || {};
-    if (!issuerUrl) {
+    if (!issuerUrl || typeof issuerUrl !== 'string') {
       return res.status(400).json({ error: 'Missing issuerUrl' });
     }
 
-    const base = issuerUrl.replace(/\/+$/, '');
+    let normalized = issuerUrl.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(normalized)) {
+      const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(normalized);
+      normalized = `${isLocal ? 'http' : 'https'}://${normalized}`;
+    }
+    const base = normalized;
     const candidates = base.includes('/.well-known/')
       ? [base]
       : [`${base}/.well-known/openid-configuration`, `${base}/.well-known/oauth-authorization-server`];

@@ -70,7 +70,7 @@ export function parseRawHttpRequest(rawRequest, defaultScheme = 'https') {
     if (!hostHeader) {
       throw new Error('Relative request path requires a Host header');
     }
-    const scheme = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(hostHeader) ? 'http' : defaultScheme;
+    const scheme = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(hostHeader) ? 'http' : defaultScheme;
     fullUrl = `${scheme}://${hostHeader}${target.startsWith('/') ? '' : '/'}${target}`;
   }
 

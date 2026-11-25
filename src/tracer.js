@@ -62,12 +62,13 @@ export function evaluateRedirectProbe({ status, location, mutatedUri, attackerHo
 
   let pointsToAttacker = false;
   if (attackerHost) {
-    const cleanAttacker = attackerHost.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+    const cleanAttacker = attackerHost.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].toLowerCase();
     try {
       const locUrl = new URL(location);
-      pointsToAttacker = locUrl.hostname.toLowerCase().includes(cleanAttacker);
+      const locHost = locUrl.hostname.toLowerCase();
+      pointsToAttacker = locHost === cleanAttacker || locHost.endsWith(`.${cleanAttacker}`);
     } catch {
-      pointsToAttacker = location.toLowerCase().includes(cleanAttacker);
+      pointsToAttacker = false;
     }
   }
 

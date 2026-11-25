@@ -114,6 +114,15 @@ test('evaluateRedirectProbe distinguishes credential redirect vs error redirect 
   });
   assert.equal(blocked.accepted, false);
   assert.equal(blocked.verdict, 'BLOCKED');
+
+  // Ensure substring host match like not-evil.test does not false-positive as evil.test
+  const substringFalsePos = evaluateRedirectProbe({
+    status: 302,
+    location: 'https://not-evil.test/cb',
+    mutatedUri: 'https://evil.test/cb',
+    attackerHost: 'evil.test',
+  });
+  assert.equal(substringFalsePos.accepted, false);
 });
 
 test('parseSetCookieHeader and CookieJar handle attributes, scoping, and expiry', () => {
@@ -139,6 +148,12 @@ test('parseSetCookieHeader and CookieJar handle attributes, scoping, and expiry'
   // Reject cross-domain cookie injection
   jar.setFromHeaders('https://evil.org/login', ['hijack=1; Domain=example.com; Path=/']);
   assert.equal(jar.getCookieHeader('https://app.example.com/'), 'sso_sid=xyz123');
+
+  // Delete cookie on past Expires header
+  jar.setFromHeaders('https://auth.example.com/logout', [
+    'sso_sid=; Domain=.example.com; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+  ]);
+  assert.equal(jar.getCookieHeader('https://app.example.com/callback'), null);
 
   jar.clear();
   assert.equal(jar.list().length, 0);
