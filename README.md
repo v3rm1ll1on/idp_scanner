@@ -18,7 +18,17 @@ npm install
 npm start
 ```
 
-Open `http://localhost:3000` in your browser and click **Run Demo Flow** or **Discover**.
+### Offline / Behind Proxy (GitHub Release)
+
+Download `oauth-workbench-<version>.tar.gz` (or `.zip`) from **GitHub Releases** — it already includes production `node_modules/`, so no `npm install` is needed:
+
+```bash
+tar -xzf oauth-workbench-v1.0.0.tar.gz
+cd oauth-workbench
+node src/server.js
+```
+
+Open `http://127.0.0.1:3000` in your browser (or `http://127.0.0.1:3000/?demo=true` for the built-in Mock IdP sandbox).
 
 ## Running Tests
 
