@@ -145,14 +145,23 @@
               <div id="pkceVerifierBox" class="muted mono" style="display:none; font-size:11px;"></div>
               <div id="replayResultBox" class="muted mono" style="display:none; font-size:11px;"></div>
 
-              <div class="pane-subtitle">Headers (JSON)</div>
-              <textarea id="repHeaders" class="input mono code-edit" rows="4">{}</textarea>
+              <div class="fuzzer-tabs" style="margin-top:4px;">
+                <button class="rep-subtab fuzzer-tab active" data-reptab="headers">Headers (JSON)</button>
+                <button class="rep-subtab fuzzer-tab" data-reptab="body">Body</button>
+                <button class="rep-subtab fuzzer-tab" data-reptab="response">Response <span id="repResTabBadge" class="badge badge-muted">-</span></button>
+              </div>
 
-              <div class="pane-subtitle">Body</div>
-              <textarea id="repBody" class="input mono code-edit" rows="4"></textarea>
+              <div id="reptab-headers" class="rep-subpanel fuzzer-panel active">
+                <textarea id="repHeaders" class="input mono code-edit" rows="10" style="flex:1;">{}</textarea>
+              </div>
 
-              <div class="pane-subtitle">Last Response Preview</div>
-              <pre id="repResponsePreview" class="code-block" style="max-height:140px;">Send a request to preview the response here.</pre>
+              <div id="reptab-body" class="rep-subpanel fuzzer-panel">
+                <textarea id="repBody" class="input mono code-edit" rows="10" style="flex:1;"></textarea>
+              </div>
+
+              <div id="reptab-response" class="rep-subpanel fuzzer-panel">
+                <pre id="repResponsePreview" class="code-block" style="flex:1; max-height:none;">Send a request to preview the response here.</pre>
+              </div>
             </div>
             <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">

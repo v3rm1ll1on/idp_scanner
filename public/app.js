@@ -868,8 +868,12 @@ $('repSendBtn').addEventListener('click', async () => {
     state.selectedTraceId = data.hops[0].id;
     const last = data.hops[data.hops.length - 1];
     const locLine = last.response.location ? `\nLocation: ${last.response.location}` : '';
-    const bodyPreview = (last.response.body || '').slice(0, 600);
+    const bodyPreview = (last.response.body || '').slice(0, 1200);
     $('repResponsePreview').textContent = `HTTP ${last.response.status} ${last.response.statusText || ''} (${last.durationMs}ms)${locLine}\n\n${bodyPreview || '(empty body)'}`;
+    const resBadge = $('repResTabBadge');
+    resBadge.textContent = String(last.response.status || 'ERR');
+    resBadge.className = `badge ${statusBadgeClass(last.response.status)}`;
+    document.querySelector('.rep-subtab[data-reptab="response"]').click();
   }
   await refreshCookieJarBadge();
   await loadTraces();
@@ -938,7 +942,16 @@ $('quickMutateSelect').addEventListener('change', (e) => {
   e.target.value = '';
 });
 
-document.querySelectorAll('.fuzzer-tab').forEach((tab) => {
+document.querySelectorAll('.rep-subtab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.rep-subtab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.rep-subpanel').forEach((p) => p.classList.remove('active'));
+    tab.classList.add('active');
+    $(`reptab-${tab.dataset.reptab}`).classList.add('active');
+  });
+});
+
+document.querySelectorAll('.fuzzer-tab:not(.rep-subtab)').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.fuzzer-tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.fuzzer-panel').forEach((p) => p.classList.remove('active'));
