@@ -489,3 +489,27 @@ table.kv-table {
   font-size: 12px;
 }
 .help-card li { margin-bottom: 4px; }
+
+.disc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.disc-stat {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.disc-stat-label {
+  font-size: 11px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.disc-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
