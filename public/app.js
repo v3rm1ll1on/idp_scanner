@@ -260,11 +260,20 @@ function formatBody(body) {
 function renderAudit(audit) {
   const findingsEl = $('auditFindings');
   const jwtEl = $('jwtList');
+  const badge = $('auditTabBadge');
   if (!audit) {
+    badge.textContent = '0';
+    badge.className = 'badge badge-muted';
     findingsEl.textContent = 'No audit data.';
     jwtEl.innerHTML = '';
     return;
   }
+
+  const fCount = (audit.findings || []).length;
+  const jCount = (audit.jwts || []).length;
+  badge.textContent = String(fCount + jCount);
+  const hasHigh = (audit.findings || []).some((f) => f.severity === 'HIGH');
+  badge.className = `badge ${hasHigh ? 'badge-danger' : fCount > 0 ? 'badge-warn' : 'badge-muted'}`;
 
   if (!audit.findings || audit.findings.length === 0) {
     findingsEl.innerHTML = '<div class="muted">No security issues flagged for this trace.</div>';
@@ -408,12 +417,27 @@ function extractRedirectFromRepeater() {
 
 function renderRedirectMutations() {
   const wrap = $('redirectMutationList');
+  const summaryEl = $('redirectFuzzerSummary');
+  const onlyAccepted = $('redirectOnlyAccepted')?.checked;
+
   if (state.redirectMutations.length === 0) {
     wrap.innerHTML = '<div class="muted">Click Generate to build redirect_uri payloads.</div>';
     return;
   }
 
-  const rows = state.redirectMutations
+  if (state.batchResults.size > 0) {
+    const all = [...state.batchResults.values()];
+    const acc = all.filter((r) => r.accepted).length;
+    summaryEl.innerHTML = `${all.length} probed · <span style="color:${acc ? '#f87171' : '#4ade80'}">${acc} ACCEPTED</span> · ${all.length - acc} blocked`;
+  } else {
+    summaryEl.textContent = `${state.redirectMutations.length} payloads ready.`;
+  }
+
+  const list = onlyAccepted
+    ? state.redirectMutations.filter((m) => state.batchResults.get(m.id)?.accepted)
+    : state.redirectMutations;
+
+  const rows = list
     .map((m) => {
       const res = state.batchResults.get(m.id);
       const badgeCls = !res ? '' : res.accepted ? 'badge-danger' : res.verdict === 'REDIRECT_ERROR' ? 'badge-warn' : 'badge-ok';
@@ -494,11 +518,27 @@ function applyParamPatchToRepeater(patch) {
 
 function renderParamFuzzerTable() {
   const wrap = $('paramFuzzerList');
+  const summaryEl = $('paramFuzzerSummary');
+  const onlyAccepted = $('paramOnlyAccepted')?.checked;
+
   if (!state.paramMutations.length) {
     wrap.innerHTML = '<div class="muted">No parameter probes loaded.</div>';
     return;
   }
-  const rows = state.paramMutations
+
+  if (state.paramBatchResults.size > 0) {
+    const all = [...state.paramBatchResults.values()];
+    const acc = all.filter((r) => r.accepted).length;
+    summaryEl.innerHTML = `${all.length} probed · <span style="color:${acc ? '#f87171' : '#4ade80'}">${acc} ACCEPTED (RISK)</span> · ${all.length - acc} blocked`;
+  } else {
+    summaryEl.textContent = `${state.paramMutations.length} probes ready.`;
+  }
+
+  const list = onlyAccepted
+    ? state.paramMutations.filter((m) => state.paramBatchResults.get(m.id)?.accepted)
+    : state.paramMutations;
+
+  const rows = list
     .map((m) => {
       const res = state.paramBatchResults.get(m.id);
       const badgeCls = !res ? '' : res.accepted ? 'badge-danger' : res.verdict === 'REDIRECT_ERROR' ? 'badge-warn' : 'badge-ok';
@@ -806,10 +846,17 @@ $('repSendBtn').addEventListener('click', async () => {
   });
   if (data.hops && data.hops.length > 0) {
     state.selectedTraceId = data.hops[0].id;
+    const last = data.hops[data.hops.length - 1];
+    const locLine = last.response.location ? `\nLocation: ${last.response.location}` : '';
+    const bodyPreview = (last.response.body || '').slice(0, 600);
+    $('repResponsePreview').textContent = `HTTP ${last.response.status} ${last.response.statusText || ''} (${last.durationMs}ms)${locLine}\n\n${bodyPreview || '(empty body)'}`;
   }
   await refreshCookieJarBadge();
   await loadTraces();
 });
+
+$('redirectOnlyAccepted').addEventListener('change', renderRedirectMutations);
+$('paramOnlyAccepted').addEventListener('change', renderParamFuzzerTable);
 
 $('clearCookiesBtn').addEventListener('click', async () => {
   await api('/api/cookies', { method: 'DELETE' });
@@ -993,6 +1040,31 @@ $('copyRawHttpBtn').addEventListener('click', async () => {
   }
   lines.push('', trace.request.body || '');
   await copyToClipboard(lines.join('\r\n'), 'Copied Raw HTTP');
+});
+
+$('copyMdReportBtn').addEventListener('click', async () => {
+  const trace = state.traces.find((t) => t.id === state.selectedTraceId);
+  if (!trace) return;
+  const findings = (trace.audit?.findings || [])
+    .map((f) => `- **[${f.severity}]** ${f.title}: ${f.detail}`)
+    .join('\n');
+  const md = [
+    `### OAuth Trace Finding — ${trace.request.method} ${trace.request.url}`,
+    `- **Timestamp:** ${trace.timestamp}`,
+    `- **Response:** HTTP ${trace.response.status}${trace.response.location ? ` -> \`${trace.response.location}\`` : ''}`,
+    '',
+    '#### Audit Findings',
+    findings || '- No findings flagged.',
+    '',
+    '#### Request',
+    '```http',
+    `${trace.request.method} ${trace.request.url}`,
+    ...Object.entries(trace.request.headers || {}).map(([k, v]) => `${k}: ${v}`),
+    '',
+    trace.request.body || '',
+    '```',
+  ].join('\n');
+  await copyToClipboard(md, 'Copied Markdown Report');
 });
 
 $('setBaselineBtn').addEventListener('click', () => {

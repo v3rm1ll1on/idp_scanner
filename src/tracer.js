@@ -178,6 +178,8 @@ export async function sendAndTrace(store, options) {
         ...parsedReq.oauthParams,
         ...(parsedLocation ? parsedLocation.oauthParams : {}),
       },
+      requestHeaders: reqHeaders,
+      requestBody: currentBody || '',
       responseHeaders,
       cookies: parsedCookies,
       status: res.status,

@@ -71,6 +71,21 @@ test('auditOAuthContext flags implicit flow, missing state, and weak headers', (
   assert.ok(codes.includes('HTTP_WEAK_COOKIE_FLAGS'));
 });
 
+test('auditOAuthContext extracts JWT from Authorization request header', () => {
+  const header = encodeBase64Url({ alg: 'none', typ: 'JWT' });
+  const payload = encodeBase64Url({ sub: 'demo' });
+  const jwt = `${header}.${payload}.`;
+
+  const audit = auditOAuthContext({
+    requestHeaders: { Authorization: `Bearer ${jwt}` },
+    status: 200,
+    responseHeaders: {},
+  });
+  assert.equal(audit.jwts.length, 1);
+  assert.equal(audit.jwts[0].label, 'Authorization');
+  assert.ok(audit.findings.some((f) => f.code === 'JWT_ALG_NONE'));
+});
+
 test('evaluateRedirectProbe distinguishes credential redirect vs error redirect vs blocked', () => {
   const cred = evaluateRedirectProbe({
     status: 302,

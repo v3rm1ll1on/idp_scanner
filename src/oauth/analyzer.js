@@ -5,6 +5,8 @@ import { parseSetCookieHeader } from './cookies.js';
  * Audits an OAuth/OIDC request or HTTP trace hop for security issues.
  * @param {object} context
  * @param {object} [context.oauthParams]
+ * @param {object} [context.requestHeaders]
+ * @param {string} [context.requestBody]
  * @param {object} [context.responseHeaders]
  * @param {Array<object>} [context.cookies]
  * @param {number} [context.status]
@@ -152,6 +154,8 @@ export function auditOAuthContext(context = {}) {
   // 4. JWT extraction & audit
   const jwts = [
     ...extractAndInspectJwts(params),
+    ...extractAndInspectJwts(context.requestHeaders || {}),
+    ...extractAndInspectJwts(context.requestBody || ''),
     ...extractAndInspectJwts(context.location || ''),
     ...extractAndInspectJwts(context.responseBody || ''),
   ];

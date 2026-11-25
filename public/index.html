@@ -66,7 +66,7 @@
         <div class="tab-bar">
           <button class="tab active" data-tab="inspector">Inspector</button>
           <button class="tab" data-tab="repeater">Repeater &amp; Redirect-URI Fuzzer</button>
-          <button class="tab" data-tab="audit">Tokens &amp; Audit</button>
+          <button class="tab" data-tab="audit">Tokens &amp; Audit <span id="auditTabBadge" class="badge badge-muted">0</span></button>
           <button class="tab" data-tab="discovery">Discovery</button>
         </div>
 
@@ -74,6 +74,7 @@
           <div class="inspector-toolbar">
             <button id="copyCurlBtn" class="btn btn-secondary" data-tip="Copy selected request as a ready-to-run curl command.">Copy as cURL</button>
             <button id="copyRawHttpBtn" class="btn btn-secondary" data-tip="Copy selected request in raw HTTP/1.1 format (e.g. for Burp Repeater).">Copy Raw HTTP</button>
+            <button id="copyMdReportBtn" class="btn btn-secondary" data-tip="Copy selected trace and its audit findings as a Markdown snippet for your pentest report.">Copy MD Report</button>
             <button id="setBaselineBtn" class="btn btn-secondary" data-tip="Mark this trace as the baseline to diff status, location, and body length against other traces.">Set as Baseline</button>
             <button id="clearBaselineBtn" class="btn btn-ghost" data-tip="Remove active baseline comparison.">Clear Baseline</button>
             <span id="copyFeedback" class="muted mono"></span>
@@ -153,6 +154,9 @@
 
               <div class="pane-subtitle">Body</div>
               <textarea id="repBody" class="input mono code-edit" rows="4"></textarea>
+
+              <div class="pane-subtitle">Last Response Preview</div>
+              <pre id="repResponsePreview" class="code-block" style="max-height:140px;">Send a request to preview the response here.</pre>
             </div>
             <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
@@ -167,6 +171,10 @@
                   <button id="refreshMutationsBtn" class="btn btn-secondary" data-tip="Regenerate all 28 redirect_uri bypass payloads for the current redirect_uri and attacker host.">Generate</button>
                   <button id="batchRedirectBtn" class="btn btn-danger" data-tip="Send all 28 redirect_uri payloads against the Repeater URL (without following redirects) and classify server responses.">Run Batch Probe</button>
                 </div>
+                <div class="form-row" style="justify-content:space-between;">
+                  <span id="redirectFuzzerSummary" class="muted mono">Not probed yet.</span>
+                  <label class="checkbox-inline" style="font-size:11px;"><input id="redirectOnlyAccepted" type="checkbox" /> Only Accepted</label>
+                </div>
                 <div id="redirectMutationList" class="mutation-table-wrap"></div>
               </div>
 
@@ -174,6 +182,10 @@
                 <div class="form-row">
                   <span class="muted" style="flex:1;">Tests state removal, implicit downgrade, response_mode, prompt=none, PKCE downgrade/strip, scope escalation.</span>
                   <button id="batchParamsBtn" class="btn btn-danger" data-tip="Run all 9 OAuth parameter probes against the current Repeater URL.">Run Param Fuzzer</button>
+                </div>
+                <div class="form-row" style="justify-content:space-between;">
+                  <span id="paramFuzzerSummary" class="muted mono">Not probed yet.</span>
+                  <label class="checkbox-inline" style="font-size:11px;"><input id="paramOnlyAccepted" type="checkbox" /> Only Accepted</label>
                 </div>
                 <div id="paramFuzzerList" class="mutation-table-wrap"></div>
               </div>

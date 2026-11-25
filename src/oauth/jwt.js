@@ -124,7 +124,7 @@ export function inspectJwt(token) {
 export function extractAndInspectJwts(source) {
   const results = [];
   const seen = new Set();
-  const jwtRegex = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\b/g;
+  const jwtRegex = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*(?![A-Za-z0-9_-])/g;
 
   const scanText = (text, labelPrefix) => {
     if (typeof text !== 'string') return;
