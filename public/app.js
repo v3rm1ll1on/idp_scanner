@@ -769,6 +769,22 @@ function initResizers() {
   });
 }
 
+// Help Modal
+function toggleHelp(show) {
+  $('helpModal').style.display = show ? 'flex' : 'none';
+}
+$('helpBtn').addEventListener('click', () => toggleHelp(true));
+$('closeHelpBtn').addEventListener('click', () => toggleHelp(false));
+$('helpModal').addEventListener('click', (e) => {
+  if (e.target === $('helpModal')) toggleHelp(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') toggleHelp(false);
+  if (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+    toggleHelp($('helpModal').style.display === 'none');
+  }
+});
+
 // Init
 initResizers();
 loadMockConfig();

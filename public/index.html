@@ -16,9 +16,10 @@
 
     <div class="topbar-controls">
       <input id="issuerInput" class="input mono" type="text" value="http://localhost:3000/mock-idp" placeholder="Issuer or /.well-known/openid-configuration URL" />
-      <button id="discoverBtn" class="btn btn-secondary">Discover</button>
-      <button id="demoFlowBtn" class="btn btn-primary">Run Demo Flow</button>
-      <button id="clearTracesBtn" class="btn btn-ghost">Clear</button>
+      <button id="discoverBtn" class="btn btn-secondary" data-tip="Fetch /.well-known/openid-configuration or oauth-authorization-server from the target issuer.">Discover</button>
+      <button id="demoFlowBtn" class="btn btn-primary" data-tip="Execute a full Authorization Code flow (Authorize -> Callback -> Token -> UserInfo) against the local Mock IdP.">Run Demo Flow</button>
+      <button id="clearTracesBtn" class="btn btn-ghost" data-tip="Clear all recorded HTTP traces and sequence steps.">Clear</button>
+      <button id="helpBtn" class="btn btn-secondary" data-tip="Open Pentester Reference & Help (?)" style="font-weight:700;">?</button>
     </div>
   </header>
 
@@ -31,13 +32,13 @@
       <div id="traceList" class="trace-list"></div>
 
       <details class="mock-config" open>
-        <summary class="panel-header clickable">Mock IdP Security Toggles</summary>
+        <summary class="panel-header clickable" data-tip="Toggle intentional vulnerabilities on the local /mock-idp sandbox.">Mock IdP Security Toggles</summary>
         <div class="mock-toggles" id="mockToggles">
-          <label><input type="checkbox" data-key="allowOpenRedirect" /> allowOpenRedirect</label>
-          <label><input type="checkbox" data-key="allowMissingState" /> allowMissingState</label>
-          <label><input type="checkbox" data-key="allowImplicitDowngrade" /> allowImplicitDowngrade</label>
-          <label><input type="checkbox" data-key="allowPkceDowngrade" /> allowPkceDowngrade</label>
-          <label><input type="checkbox" data-key="allowAlgNone" /> allowAlgNone</label>
+          <label data-tip="Accept any redirect_uri (enables open redirect bypasses)."><input type="checkbox" data-key="allowOpenRedirect" /> allowOpenRedirect</label>
+          <label data-tip="Permit authorization requests without a state parameter (CSRF)."><input type="checkbox" data-key="allowMissingState" /> allowMissingState</label>
+          <label data-tip="Allow response_type=token / id_token (Implicit/Hybrid downgrade)."><input type="checkbox" data-key="allowImplicitDowngrade" /> allowImplicitDowngrade</label>
+          <label data-tip="Allow PKCE code_challenge_method=plain instead of enforcing S256."><input type="checkbox" data-key="allowPkceDowngrade" /> allowPkceDowngrade</label>
+          <label data-tip="Issue unsigned JWTs with alg=none from /mock-idp/token."><input type="checkbox" data-key="allowAlgNone" /> allowAlgNone</label>
         </div>
       </details>
     </aside>
@@ -47,7 +48,7 @@
     <main class="main">
       <section class="parser-bar">
         <textarea id="parseInput" class="input mono parse-textarea" rows="2" placeholder="Paste OAuth URL (https://...) or raw HTTP request (GET /authorize?... HTTP/1.1&#10;Host: ...)"></textarea>
-        <button id="parseBtn" class="btn btn-secondary">Parse &amp; Load</button>
+        <button id="parseBtn" class="btn btn-secondary" data-tip="Parse URL or raw Burp HTTP request, audit OAuth parameters, and load into Repeater.">Parse &amp; Load</button>
       </section>
 
       <section class="diagram-section">
@@ -70,10 +71,10 @@
 
         <div class="tab-content active" id="tab-inspector">
           <div class="inspector-toolbar">
-            <button id="copyCurlBtn" class="btn btn-secondary">Copy as cURL</button>
-            <button id="copyRawHttpBtn" class="btn btn-secondary">Copy Raw HTTP</button>
-            <button id="setBaselineBtn" class="btn btn-secondary">Set as Baseline</button>
-            <button id="clearBaselineBtn" class="btn btn-ghost">Clear Baseline</button>
+            <button id="copyCurlBtn" class="btn btn-secondary" data-tip="Copy selected request as a ready-to-run curl command.">Copy as cURL</button>
+            <button id="copyRawHttpBtn" class="btn btn-secondary" data-tip="Copy selected request in raw HTTP/1.1 format (e.g. for Burp Repeater).">Copy Raw HTTP</button>
+            <button id="setBaselineBtn" class="btn btn-secondary" data-tip="Mark this trace as the baseline to diff status, location, and body length against other traces.">Set as Baseline</button>
+            <button id="clearBaselineBtn" class="btn btn-ghost" data-tip="Remove active baseline comparison.">Clear Baseline</button>
             <span id="copyFeedback" class="muted mono"></span>
           </div>
           <div id="diffBanner" class="diff-banner" style="display:none;"></div>
@@ -116,24 +117,24 @@
                   <option>DELETE</option>
                 </select>
                 <input id="repUrl" class="input mono" type="text" placeholder="https://auth.target.com/authorize?..." />
-                <button id="repSendBtn" class="btn btn-primary">Send</button>
-                <button id="repOpenBrowserBtn" class="btn btn-secondary" title="Open URL in a new browser tab for interactive login">Open in Browser</button>
+                <button id="repSendBtn" class="btn btn-primary" data-tip="Send request through the local Node backend (bypasses browser CORS) and trace every hop.">Send</button>
+                <button id="repOpenBrowserBtn" class="btn btn-secondary" data-tip="Open this URL in a new browser tab for interactive login; redirects to /callback are captured live via SSE.">Open in Browser</button>
               </div>
               <div class="form-row" style="gap:12px;">
-                <label class="checkbox-inline">
+                <label class="checkbox-inline" data-tip="Follow 301/302/303/307 redirects step-by-step and log each hop individually.">
                   <input id="repFollowRedirects" type="checkbox" /> Follow redirects (step-by-step trace)
                 </label>
-                <label class="checkbox-inline">
+                <label class="checkbox-inline" data-tip="Automatically store Set-Cookie headers and send matching cookies on redirects and follow-up requests.">
                   <input id="repUseCookieJar" type="checkbox" checked /> Use Session Cookie Jar
                 </label>
                 <span id="cookieJarBadge" class="badge badge-muted">Cookies: 0</span>
-                <button id="clearCookiesBtn" class="btn btn-ghost" style="padding:3px 7px;">Clear Cookies</button>
+                <button id="clearCookiesBtn" class="btn btn-ghost" style="padding:3px 7px;" data-tip="Empty all cookies stored in the session Cookie Jar.">Clear Cookies</button>
               </div>
 
               <div class="pane-subtitle">Quick OAuth Parameter Mutations &amp; Generators</div>
               <div class="chip-row" style="margin-bottom:4px;">
-                <button id="genPkceBtn" class="chip">Gen PKCE (S256)</button>
-                <button id="genStateBtn" class="chip">Gen State &amp; Nonce</button>
+                <button id="genPkceBtn" class="chip" data-tip="Generate a random code_verifier and SHA-256 code_challenge (S256) into the URL.">Gen PKCE (S256)</button>
+                <button id="genStateBtn" class="chip" data-tip="Generate high-entropy state and nonce parameters into the URL.">Gen State &amp; Nonce</button>
               </div>
               <div id="pkceVerifierBox" class="muted mono" style="display:none; font-size:11px;"></div>
               <div id="paramMutationBtns" class="chip-row"></div>
@@ -148,9 +149,9 @@
             <div class="pane">
               <div class="pane-title">Redirect-URI Mutation Matrix</div>
               <div class="form-row">
-                <input id="attackerHostInput" class="input mono" type="text" value="attacker.example" placeholder="Attacker host" />
-                <button id="refreshMutationsBtn" class="btn btn-secondary">Generate</button>
-                <button id="batchRedirectBtn" class="btn btn-danger">Run Batch Probe</button>
+                <input id="attackerHostInput" class="input mono" type="text" value="attacker.example" placeholder="Attacker host" data-tip="Host domain used in generated redirect_uri bypass payloads." />
+                <button id="refreshMutationsBtn" class="btn btn-secondary" data-tip="Regenerate all 19 redirect_uri bypass payloads for the current redirect_uri and attacker host.">Generate</button>
+                <button id="batchRedirectBtn" class="btn btn-danger" data-tip="Send all 19 redirect_uri payloads against the Repeater URL (without following redirects) and classify server responses.">Run Batch Probe</button>
               </div>
               <div id="redirectMutationList" class="mutation-table-wrap"></div>
             </div>
@@ -183,6 +184,53 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="helpModal" class="modal-backdrop" style="display:none;">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
+      <div class="modal-header">
+        <span id="helpModalTitle">OAuth Workbench — Pentester Reference</span>
+        <button id="closeHelpBtn" class="btn btn-ghost">Close (Esc)</button>
+      </div>
+      <div class="modal-body">
+        <div class="help-grid">
+          <div class="help-card">
+            <h4>1. Typical Pentest Workflow</h4>
+            <ul>
+              <li><strong>Discover:</strong> Enter an Issuer URL to fetch <code>/.well-known/openid-configuration</code>.</li>
+              <li><strong>Paste &amp; Load:</strong> Paste an Authorization URL or raw Burp HTTP request at the top to parse parameters and load it into the Repeater.</li>
+              <li><strong>Trace &amp; Visualize:</strong> Send requests with <em>Follow redirects</em> enabled to inspect every <code>302 Location</code> hop, headers, and cookies.</li>
+              <li><strong>Interactive Login:</strong> Use <em>Open in Browser</em> with <code>redirect_uri=http://localhost:3000/callback</code>; callbacks &amp; <code>#fragment</code> tokens stream in live via SSE.</li>
+            </ul>
+          </div>
+          <div class="help-card">
+            <h4>2. Redirect-URI Batch Probe Verdicts</h4>
+            <ul>
+              <li><span class="badge badge-danger">ACCEPTED_WITH_CREDENTIAL</span> Server redirected to attacker/mutated URI <strong>with</strong> <code>code</code>, <code>access_token</code>, or <code>id_token</code>.</li>
+              <li><span class="badge badge-danger">ACCEPTED_REDIRECT</span> Server redirected to attacker/mutated URI without an <code>error=</code> parameter.</li>
+              <li><span class="badge badge-warn">REDIRECT_ERROR</span> Server returned <code>3xx</code> containing <code>error=</code>.</li>
+              <li><span class="badge badge-ok">BLOCKED</span> Server rejected the mutated <code>redirect_uri</code> (e.g. HTTP 400).</li>
+            </ul>
+          </div>
+          <div class="help-card">
+            <h4>3. Cookies &amp; Session Jar</h4>
+            <ul>
+              <li><strong>Cookies Set:</strong> Every <code>Set-Cookie</code> header is parsed into flags (<code>HttpOnly</code>, <code>Secure</code>, <code>SameSite</code>, <code>Domain</code>).</li>
+              <li><strong>Session Cookie Jar:</strong> When enabled, cookies are scoped by domain/path and sent automatically across redirect hops and follow-up Repeater requests.</li>
+              <li><strong>Baseline Diff:</strong> Click <em>Set as Baseline</em> in the Inspector to compare status, Location, and body length across mutated requests.</li>
+            </ul>
+          </div>
+          <div class="help-card">
+            <h4>4. Local Mock IdP Sandbox</h4>
+            <ul>
+              <li>Available at <code>/mock-idp/.well-known/openid-configuration</code>.</li>
+              <li>Use the sidebar toggles to simulate misconfigurations (open redirect, missing <code>state</code>, Implicit downgrade, PKCE <code>plain</code>, <code>alg: none</code>).</li>
+              <li>Shortcut: Press <code>?</code> anywhere outside inputs to toggle this help, <code>Esc</code> to close.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>
