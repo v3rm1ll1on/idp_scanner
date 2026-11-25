@@ -358,3 +358,110 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     server.close();
   }
 });
+
+test('sendAndTrace redirect method rules (302 vs 307, custom scheme), Discovery fallback & jwksUri fetch', async () => {
+  const { server, baseUrl } = await startTestServer();
+  const { default: express } = await import('express');
+
+  // Auxiliary target server for redirect, discovery fallback, and jwksUri tests
+  const auxApp = express();
+  auxApp.use(express.text({ type: '*/*' }));
+
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  jwk.kid = 'aux-rsa-1';
+
+  auxApp.post('/hop302', (_req, res) => res.redirect(302, '/echo'));
+  auxApp.post('/hop307', (_req, res) => res.redirect(307, '/echo'));
+  auxApp.all('/echo', (req, res) => res.json({ method: req.method, body: typeof req.body === 'string' ? req.body : '' }));
+  auxApp.get('/hop-custom', (_req, res) => res.redirect(302, 'myapp://callback?code=1'));
+
+  auxApp.get('/.well-known/oauth-authorization-server', (_req, res) => {
+    res.json({ issuer: 'https://custom-oauth.example', authorization_endpoint: 'https://custom-oauth.example/auth' });
+  });
+  auxApp.get('/jwks.json', (_req, res) => res.json({ keys: [jwk] }));
+  auxApp.get('/jwks-html', (_req, res) => res.type('html').send('<html>error</html>'));
+
+  const auxServer = await new Promise((resolve) => {
+    const s = auxApp.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  const auxBase = `http://127.0.0.1:${auxServer.address().port}`;
+
+  try {
+    // 1. 302 switches POST -> GET and drops body; 307 preserves POST + body
+    const res302 = await (
+      await fetch(`${baseUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'POST', url: `${auxBase}/hop302`, body: 'secret=1', followRedirects: true }),
+      })
+    ).json();
+    assert.equal(res302.hops.length, 2);
+    assert.deepEqual(JSON.parse(res302.hops[1].response.body), { method: 'GET', body: '' });
+
+    const res307 = await (
+      await fetch(`${baseUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'POST', url: `${auxBase}/hop307`, body: 'secret=1', followRedirects: true }),
+      })
+    ).json();
+    assert.equal(res307.hops.length, 2);
+    assert.deepEqual(JSON.parse(res307.hops[1].response.body), { method: 'POST', body: 'secret=1' });
+
+    // 2. Custom scheme redirect stops cleanly after 1 hop
+    const resCustom = await (
+      await fetch(`${baseUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'GET', url: `${auxBase}/hop-custom`, followRedirects: true }),
+      })
+    ).json();
+    assert.equal(resCustom.hops.length, 1);
+    assert.equal(resCustom.hops[0].response.location, 'myapp://callback?code=1');
+
+    // 3. Discovery fallback to /.well-known/oauth-authorization-server
+    const discFallback = await (
+      await fetch(`${baseUrl}/api/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issuerUrl: auxBase }),
+      })
+    ).json();
+    assert.equal(discFallback.summary.issuer, 'https://custom-oauth.example');
+
+    // 4. /api/jwt/verify via live jwksUri (valid + HTML 502 + 404 502)
+    const hB64 = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'aux-rsa-1' })).toString('base64url');
+    const pB64 = Buffer.from(JSON.stringify({ sub: 'u2' })).toString('base64url');
+    const sB64 = crypto.sign('RSA-SHA256', Buffer.from(`${hB64}.${pB64}`), privateKey).toString('base64url');
+    const jwt = `${hB64}.${pB64}.${sB64}`;
+
+    const okVerify = await (
+      await fetch(`${baseUrl}/api/jwt/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: jwt, jwksUri: `${auxBase}/jwks.json` }),
+      })
+    ).json();
+    assert.equal(okVerify.verified, true);
+
+    const htmlVerifyRes = await fetch(`${baseUrl}/api/jwt/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: jwt, jwksUri: `${auxBase}/jwks-html` }),
+    });
+    assert.equal(htmlVerifyRes.status, 502);
+
+    const notFoundVerifyRes = await fetch(`${baseUrl}/api/jwt/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: jwt, jwksUri: `${auxBase}/missing.json` }),
+    });
+    assert.equal(notFoundVerifyRes.status, 502);
+  } finally {
+    auxServer.closeAllConnections?.();
+    auxServer.close();
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
