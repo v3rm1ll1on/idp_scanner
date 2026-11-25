@@ -96,6 +96,7 @@ test('batchTestRedirectUris runs all 28 payloads with expected strict vs weakPre
     const acceptedCount = weakRes.filter((r) => r.accepted).length;
     assert.ok(acceptedCount >= 4 && acceptedCount < 28);
   } finally {
+    server.closeAllConnections?.();
     server.close();
   }
 });
@@ -133,18 +134,25 @@ test('batchTestCustomField fuzzes both query and JSON/form body and reports base
     assert.equal(jsonRes.results[1].status, 400);
     assert.equal(jsonRes.results[1].anomaly, true);
 
-    // 3. Unreachable baseline throws clear error
+    // 3. Unreachable baseline throws clear error (use a freshly closed ephemeral port)
+    const closedPort = await new Promise((resolve) => {
+      const tmp = createApp().app.listen(0, '127.0.0.1', () => {
+        const p = tmp.address().port;
+        tmp.close(() => resolve(p));
+      });
+    });
     await assert.rejects(
       () =>
         batchTestCustomField(store, {
           method: 'GET',
-          baseUrl: 'http://127.0.0.1:1/unreachable',
+          baseUrl: `http://127.0.0.1:${closedPort}/unreachable`,
           paramName: 'x',
           payloads: ['1'],
         }),
       /Baseline request failed/
     );
   } finally {
+    server.closeAllConnections?.();
     server.close();
   }
 });
@@ -177,6 +185,7 @@ test('batchTestTokenEndpoint detects code replay rejection and handles lowercase
     assert.equal(results[0].accepted, false);
     assert.equal(results[0].verdict, 'BLOCKED');
   } finally {
+    server.closeAllConnections?.();
     server.close();
   }
 });

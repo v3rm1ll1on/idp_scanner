@@ -110,6 +110,7 @@ test('Discovery, full OAuth flow, and redirect_uri batch probe work end-to-end',
     assert.equal(openBatch.results.every((r) => r.accepted === true), true);
     assert.equal(openBatch.results.every((r) => r.verdict === 'ACCEPTED_WITH_CREDENTIAL'), true);
   } finally {
+    server.closeAllConnections?.();
     server.close();
   }
 });
@@ -353,6 +354,7 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     });
     assert.equal(badUserinfo.status, 401);
   } finally {
+    server.closeAllConnections?.();
     server.close();
   }
 });
