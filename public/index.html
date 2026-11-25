@@ -31,6 +31,18 @@
       </div>
       <div id="traceList" class="trace-list"></div>
 
+      <details class="mock-config" open>
+        <summary class="panel-header clickable" data-tip="Configure TLS bypass for self-signed certs and optional upstream proxy (e.g. Burp Suite).">Network &amp; Proxy</summary>
+        <div class="mock-toggles">
+          <label data-tip="Ignore TLS certificate errors (essential for internal/staging IdPs with self-signed certs)."><input id="netInsecureTls" type="checkbox" /> Ignore TLS errors</label>
+          <div class="form-row">
+            <input id="netProxyUrl" class="input mono" type="text" placeholder="http://127.0.0.1:8080" data-tip="Optional HTTP(S) upstream proxy (e.g. Burp Suite at http://127.0.0.1:8080)." />
+            <button id="netApplyBtn" class="btn btn-secondary" data-tip="Save Network & Proxy settings.">Apply</button>
+          </div>
+          <div id="netStatusText" class="muted mono" style="font-size:10.5px;">TLS: strict · Proxy: off</div>
+        </div>
+      </details>
+
       <details id="mockConfigSection" class="mock-config" style="display:none;" open>
         <summary class="panel-header clickable" data-tip="Toggle intentional vulnerabilities on the local /mock-idp sandbox.">Mock IdP Security Toggles</summary>
         <div class="mock-toggles" id="mockToggles">

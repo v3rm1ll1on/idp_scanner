@@ -1,7 +1,30 @@
 import crypto from 'node:crypto';
+import { fetch as undiciFetch, Agent, ProxyAgent } from 'undici';
 import { parseOAuthUrl } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
 import { parseSetCookieHeader } from './oauth/cookies.js';
+
+/**
+ * Builds an undici dispatcher for optional upstream HTTP(S) proxy and insecure TLS bypass.
+ * @param {{insecureTls?: boolean, proxyUrl?: string}} [networkConfig]
+ * @returns {Agent|ProxyAgent|undefined}
+ */
+export function createDispatcher(networkConfig = {}) {
+  const { insecureTls = false, proxyUrl = '' } = networkConfig || {};
+  if (proxyUrl) {
+    return new ProxyAgent({
+      uri: proxyUrl,
+      requestTls: { rejectUnauthorized: !insecureTls },
+      proxyTls: { rejectUnauthorized: !insecureTls },
+    });
+  }
+  if (insecureTls) {
+    return new Agent({
+      connect: { rejectUnauthorized: false },
+    });
+  }
+  return undefined;
+}
 
 /**
  * In-memory HTTP trace store with pub/sub notifications for SSE streaming.
@@ -100,7 +123,10 @@ export async function sendAndTrace(store, options) {
     maxHops = 6,
     label = 'manual_request',
     cookieJar = null,
+    networkConfig = null,
   } = options;
+
+  const dispatcher = networkConfig ? createDispatcher(networkConfig) : undefined;
 
   const hops = [];
   let currentUrl = url;
@@ -135,12 +161,13 @@ export async function sendAndTrace(store, options) {
       headers: reqHeaders,
       redirect: 'manual',
       signal: AbortSignal.timeout(15000),
+      ...(dispatcher ? { dispatcher } : {}),
     };
     if (currentBody && currentMethod !== 'GET' && currentMethod !== 'HEAD') {
       fetchOptions.body = currentBody;
     }
 
-    const res = await fetch(currentUrl, fetchOptions);
+    const res = await undiciFetch(currentUrl, fetchOptions);
     const durationMs = Date.now() - startedAt;
     const responseText = await res.text();
     const responseHeaders = {};
@@ -262,7 +289,7 @@ export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri, { isHpp = fa
  */
 export async function batchTestRedirectUris(
   store,
-  { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example', cookieJar = null }
+  { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example', cookieJar = null, networkConfig = null }
 ) {
   const results = [];
 
@@ -277,6 +304,7 @@ export async function batchTestRedirectUris(
         followRedirects: false,
         maxHops: 1,
         cookieJar,
+        networkConfig,
         label: `redirect_probe:${mut.id}`,
       });
 
@@ -327,7 +355,7 @@ export async function batchTestRedirectUris(
  */
 export async function batchTestOAuthParams(
   store,
-  { baseUrl, headers = {}, mutations = [], cookieJar = null }
+  { baseUrl, headers = {}, mutations = [], cookieJar = null, networkConfig = null }
 ) {
   const results = [];
 
@@ -352,6 +380,7 @@ export async function batchTestOAuthParams(
         followRedirects: false,
         maxHops: 1,
         cookieJar,
+        networkConfig,
         label: `param_probe:${mut.id}`,
       });
 
@@ -407,6 +436,7 @@ export async function batchTestCustomField(
     paramName,
     payloads = [],
     cookieJar = null,
+    networkConfig = null,
   }
 ) {
   let baselineHops;
@@ -419,6 +449,7 @@ export async function batchTestCustomField(
       followRedirects: false,
       maxHops: 1,
       cookieJar,
+      networkConfig,
       label: `custom_baseline:${paramName}`,
     });
   } catch (err) {
@@ -465,6 +496,7 @@ export async function batchTestCustomField(
         followRedirects: false,
         maxHops: 1,
         cookieJar,
+        networkConfig,
         label: `custom_probe:${paramName}`,
       });
       const hop = hops[0];
@@ -512,7 +544,7 @@ export async function batchTestCustomField(
  */
 export async function batchTestTokenEndpoint(
   store,
-  { url, headers = {}, body = '', mutations = [], attackerHost = 'attacker.example', cookieJar = null }
+  { url, headers = {}, body = '', mutations = [], attackerHost = 'attacker.example', cookieJar = null, networkConfig = null }
 ) {
   const results = [];
   const reqHeaders = { ...headers };
@@ -537,6 +569,7 @@ export async function batchTestTokenEndpoint(
         followRedirects: false,
         maxHops: 1,
         cookieJar,
+        networkConfig,
         label: `token_probe:${mut.id}`,
       });
 
@@ -550,6 +583,7 @@ export async function batchTestTokenEndpoint(
           followRedirects: false,
           maxHops: 1,
           cookieJar,
+          networkConfig,
           label: `token_probe:${mut.id}_2nd`,
         });
         hop = secondHops[0];

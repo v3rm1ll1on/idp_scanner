@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createMockIdp } from './mock-idp.js';
-import { TraceStore, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField, batchTestTokenEndpoint } from './tracer.js';
+import { fetch as undiciFetch } from 'undici';
+import { TraceStore, createDispatcher, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField, batchTestTokenEndpoint } from './tracer.js';
 import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
 import { generateRedirectUriMutations, getOAuthParameterMutations, getCustomFieldPresets, getTokenEndpointMutations } from './oauth/payloads.js';
@@ -21,6 +22,10 @@ export function createApp() {
   const store = new TraceStore();
   const mockIdp = createMockIdp();
   const cookieJar = new CookieJar();
+  const networkConfig = {
+    insecureTls: false,
+    proxyUrl: '',
+  };
 
   app.use(express.json({ limit: '2mb' }));
   app.use('/mock-idp', mockIdp.router);
@@ -28,6 +33,34 @@ export function createApp() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, version: '0.1.0' });
+  });
+
+  app.get('/api/network', (_req, res) => {
+    res.json({ ...networkConfig });
+  });
+
+  app.post('/api/network', (req, res) => {
+    const { insecureTls, proxyUrl } = req.body || {};
+    if (typeof proxyUrl === 'string') {
+      const trimmed = proxyUrl.trim();
+      if (trimmed) {
+        try {
+          const u = new URL(trimmed);
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            return res.status(400).json({ error: 'Proxy URL must use http:// or https://' });
+          }
+          networkConfig.proxyUrl = trimmed;
+        } catch {
+          return res.status(400).json({ error: 'Invalid proxyUrl' });
+        }
+      } else {
+        networkConfig.proxyUrl = '';
+      }
+    }
+    if (typeof insecureTls === 'boolean') {
+      networkConfig.insecureTls = insecureTls;
+    }
+    return res.json({ ...networkConfig });
   });
 
   app.get('/api/traces', (_req, res) => {
@@ -111,6 +144,7 @@ export function createApp() {
           url: candidate,
           headers: { Accept: 'application/json', ...headers },
           followRedirects: true,
+          networkConfig,
           label: 'oidc_discovery',
         });
         const last = hops[hops.length - 1];
@@ -161,6 +195,7 @@ export function createApp() {
         body,
         followRedirects: Boolean(followRedirects),
         cookieJar: useCookieJar ? cookieJar : null,
+        networkConfig,
         label,
       });
       return res.json({ hops, cookies: cookieJar.list() });
@@ -199,6 +234,7 @@ export function createApp() {
         mutations,
         attackerHost,
         cookieJar: useCookieJar ? cookieJar : null,
+        networkConfig,
       });
       return res.json({ results });
     } catch (err) {
@@ -237,6 +273,7 @@ export function createApp() {
         paramName,
         payloads: payloads.slice(0, 50),
         cookieJar: useCookieJar ? cookieJar : null,
+        networkConfig,
       });
       return res.json(data);
     } catch (err) {
@@ -261,6 +298,7 @@ export function createApp() {
         headers,
         mutations,
         cookieJar: useCookieJar ? cookieJar : null,
+        networkConfig,
       });
       return res.json({ results });
     } catch (err) {
@@ -299,6 +337,7 @@ export function createApp() {
         paramName,
         payloads: payloads.slice(0, 50),
         cookieJar: useCookieJar ? cookieJar : null,
+        networkConfig,
       });
       return res.json(data);
     } catch (err) {
@@ -319,9 +358,11 @@ export function createApp() {
     try {
       let keySet = jwks;
       if (!keySet && jwksUri) {
-        const jwksRes = await fetch(jwksUri, {
+        const dispatcher = createDispatcher(networkConfig);
+        const jwksRes = await undiciFetch(jwksUri, {
           headers: { Accept: 'application/json', ...headers },
           signal: AbortSignal.timeout(10000),
+          ...(dispatcher ? { dispatcher } : {}),
         });
         if (!jwksRes.ok) {
           return res.status(502).json({ error: `Failed to fetch JWKS: HTTP ${jwksRes.status}` });
@@ -361,6 +402,7 @@ export function createApp() {
         mutations,
         attackerHost,
         cookieJar: useCookieJar ? cookieJar : null,
+        networkConfig,
       });
       return res.json({ results });
     } catch (err) {

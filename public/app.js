@@ -48,6 +48,37 @@ async function loadMockConfig() {
   });
 }
 
+function renderNetStatus(cfg) {
+  const tlsPart = cfg.insecureTls ? '<span style="color:#fbbf24">TLS: insecure</span>' : 'TLS: strict';
+  const proxyPart = cfg.proxyUrl ? `<span style="color:#38bdf8">Proxy: ${escapeHtml(cfg.proxyUrl)}</span>` : 'Proxy: off';
+  $('netStatusText').innerHTML = `${tlsPart} · ${proxyPart}`;
+}
+
+async function loadNetworkConfig() {
+  const cfg = await api('/api/network');
+  $('netInsecureTls').checked = Boolean(cfg.insecureTls);
+  $('netProxyUrl').value = cfg.proxyUrl || '';
+  renderNetStatus(cfg);
+}
+
+async function saveNetworkConfig() {
+  const data = await api('/api/network', {
+    method: 'POST',
+    body: JSON.stringify({
+      insecureTls: $('netInsecureTls').checked,
+      proxyUrl: $('netProxyUrl').value.trim(),
+    }),
+  });
+  if (data.error) {
+    $('netStatusText').innerHTML = `<span style="color:#f87171">${escapeHtml(data.error)}</span>`;
+    return;
+  }
+  renderNetStatus(data);
+}
+
+$('netInsecureTls').addEventListener('change', saveNetworkConfig);
+$('netApplyBtn').addEventListener('click', saveNetworkConfig);
+
 let renderTimer = null;
 function scheduleTraceRender() {
   if (renderTimer) return;
@@ -621,6 +652,7 @@ if (isDemoMode) {
 initTooltips();
 initResizers();
 initTabsAndHelp();
+loadNetworkConfig();
 loadParamMutations();
 loadTokenMutations();
 loadCustomPresets();

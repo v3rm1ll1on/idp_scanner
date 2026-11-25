@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+import https from 'node:https';
+import { execFileSync } from 'node:child_process';
 import { createApp } from '../src/server.js';
 import { RedirectUriMutationType } from '../src/oauth/payloads.js';
 
@@ -491,5 +497,92 @@ test('sendAndTrace redirect method rules (302 vs 307, custom scheme), Discovery 
     auxServer.close();
     server.closeAllConnections?.();
     server.close();
+  }
+});
+
+test('Network settings: self-signed TLS bypass and upstream HTTP proxy routing work', async () => {
+  const { server, baseUrl } = await startTestServer();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'owb-tls-'));
+  const keyPath = path.join(tmpDir, 'key.pem');
+  const certPath = path.join(tmpDir, 'cert.pem');
+  execFileSync('openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+    '-keyout', keyPath, '-out', certPath,
+    '-days', '1', '-subj', '/CN=127.0.0.1',
+  ]);
+
+  const tlsServer = https.createServer(
+    { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) },
+    (_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tls: 'ok' }));
+    }
+  );
+  await new Promise((resolve) => tlsServer.listen(0, '127.0.0.1', resolve));
+  const tlsUrl = `https://127.0.0.1:${tlsServer.address().port}/health`;
+
+  let proxySawUrl = null;
+  const proxyServer = http.createServer((req, res) => {
+    proxySawUrl = req.url;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ viaProxy: true }));
+  });
+  await new Promise((resolve) => proxyServer.listen(0, '127.0.0.1', resolve));
+  const proxyUrl = `http://127.0.0.1:${proxyServer.address().port}`;
+
+  try {
+    // 1. Invalid proxyUrl rejected
+    const badNet = await fetch(`${baseUrl}/api/network`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proxyUrl: 'ftp://invalid-proxy' }),
+    });
+    assert.equal(badNet.status, 400);
+
+    // 2. Strict TLS rejects self-signed cert
+    const strictRes = await fetch(`${baseUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'GET', url: tlsUrl }),
+    });
+    assert.equal(strictRes.status, 502);
+
+    // 3. Enable insecureTls -> self-signed cert succeeds
+    const enableTls = await fetch(`${baseUrl}/api/network`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ insecureTls: true }),
+    });
+    assert.equal((await enableTls.json()).insecureTls, true);
+
+    const insecureRes = await fetch(`${baseUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'GET', url: tlsUrl }),
+    });
+    assert.equal(insecureRes.status, 200);
+    assert.equal(JSON.parse((await insecureRes.json()).hops[0].response.body).tls, 'ok');
+
+    // 4. Enable upstream proxy -> request routes through proxy
+    await fetch(`${baseUrl}/api/network`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proxyUrl }),
+    });
+    const proxiedRes = await fetch(`${baseUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'GET', url: 'http://target.internal/oauth/authorize?client_id=1' }),
+    });
+    assert.equal(proxiedRes.status, 200);
+    assert.ok(proxySawUrl.includes('http://target.internal/oauth/authorize'));
+  } finally {
+    proxyServer.closeAllConnections?.();
+    proxyServer.close();
+    tlsServer.closeAllConnections?.();
+    tlsServer.close();
+    server.closeAllConnections?.();
+    server.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
