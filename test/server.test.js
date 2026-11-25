@@ -190,6 +190,26 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     assert.equal(clearCookiesRes.status, 200);
     const afterClear = await (await fetch(`${baseUrl}/api/cookies`)).json();
     assert.equal(afterClear.cookies.length, 0);
+
+    // 5. Authorization code replay must fail on second exchange & missing code_verifier must fail
+    const replayAuth = await fetch(`${baseUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'GET', url: pkceAuthUrl, followRedirects: false }),
+    });
+    const replayCode = (await replayAuth.json()).hops[0].response.oauthParams.code;
+
+    const noVerifierRes = await fetch(`${baseUrl}/mock-idp/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: replayCode,
+        redirect_uri: `${baseUrl}/callback`,
+        client_id: 'pkce-client',
+      }).toString(),
+    });
+    assert.equal(noVerifierRes.status, 400);
   } finally {
     server.close();
   }

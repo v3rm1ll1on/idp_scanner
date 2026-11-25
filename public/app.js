@@ -571,6 +571,46 @@ $('repOpenBrowserBtn').addEventListener('click', () => {
   window.open(url, '_blank', 'noopener');
 });
 
+$('repReplay2xBtn').addEventListener('click', async () => {
+  let headers = {};
+  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+  const payload = {
+    method: $('repMethod').value,
+    url: $('repUrl').value.trim(),
+    headers,
+    body: $('repBody').value,
+    followRedirects: $('repFollowRedirects').checked,
+    useCookieJar: $('repUseCookieJar').checked,
+    label: 'replay_2x',
+  };
+  if (!payload.url) return;
+  const r1 = await api('/api/send', { method: 'POST', body: JSON.stringify(payload) });
+  const r2 = await api('/api/send', { method: 'POST', body: JSON.stringify(payload) });
+  const s1 = r1.hops?.[0]?.response?.status ?? 'ERR';
+  const s2 = r2.hops?.[0]?.response?.status ?? 'ERR';
+  $('replayResultBox').style.display = 'block';
+  $('replayResultBox').textContent = `Replay 2x -> Attempt #1: HTTP ${s1} | Attempt #2: HTTP ${s2}`;
+  await refreshCookieJarBadge();
+  await loadTraces();
+});
+
+function mutateTokenBody(mutator) {
+  const params = new URLSearchParams($('repBody').value || '');
+  mutator(params);
+  $('repBody').value = params.toString();
+}
+
+$('tokStripVerifierBtn').addEventListener('click', () => {
+  mutateTokenBody((p) => p.delete('code_verifier'));
+});
+$('tokMismatchRedirectBtn').addEventListener('click', () => {
+  const host = $('attackerHostInput').value.trim() || 'attacker.example';
+  mutateTokenBody((p) => p.set('redirect_uri', `https://${host}/callback`));
+});
+$('tokDropRedirectBtn').addEventListener('click', () => {
+  mutateTokenBody((p) => p.delete('redirect_uri'));
+});
+
 $('batchRedirectBtn').addEventListener('click', async () => {
   const baseUrl = $('repUrl').value.trim();
   if (!baseUrl) return;

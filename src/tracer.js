@@ -228,19 +228,23 @@ export async function sendAndTrace(store, options) {
 
 /**
  * Replaces or appends redirect_uri without double-encoding existing %XX sequences.
+ * When isHpp is true, preserves an unescaped "&redirect_uri=" separator for HTTP Parameter Pollution probes.
  * @param {string} baseUrl
  * @param {string} rawRedirectUri
+ * @param {{isHpp?: boolean}} [options]
  * @returns {string}
  */
-export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri) {
+export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri, { isHpp = false } = {}) {
   const urlObj = new URL(baseUrl);
   urlObj.searchParams.delete('redirect_uri');
   const base = urlObj.toString();
   const sep = base.includes('?') ? (base.endsWith('?') || base.endsWith('&') ? '' : '&') : '?';
-  const safeVal = String(rawRedirectUri)
-    .replace(/&/g, '%26')
+  let safeVal = String(rawRedirectUri)
     .replace(/#/g, '%23')
     .replace(/ /g, '%20');
+  if (!isHpp) {
+    safeVal = safeVal.replace(/&/g, '%26');
+  }
   return `${base}${sep}redirect_uri=${safeVal}`;
 }
 
@@ -257,7 +261,7 @@ export async function batchTestRedirectUris(
   const results = [];
 
   for (const mut of mutations) {
-    const targetUrl = buildUrlWithRawRedirectUri(baseUrl, mut.uri);
+    const targetUrl = buildUrlWithRawRedirectUri(baseUrl, mut.uri, { isHpp: Boolean(mut.isHpp) });
 
     try {
       const hops = await sendAndTrace(store, {

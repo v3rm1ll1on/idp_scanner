@@ -118,6 +118,7 @@
                 </select>
                 <input id="repUrl" class="input mono" type="text" placeholder="https://auth.target.com/authorize?..." />
                 <button id="repSendBtn" class="btn btn-primary" data-tip="Send request through the local Node backend (bypasses browser CORS) and trace every hop.">Send</button>
+                <button id="repReplay2xBtn" class="btn btn-secondary" data-tip="Send this exact request twice in a row to test Authorization Code reuse / replay protection.">Replay 2x</button>
                 <button id="repOpenBrowserBtn" class="btn btn-secondary" data-tip="Open this URL in a new browser tab for interactive login; redirects to /callback are captured live via SSE.">Open in Browser</button>
               </div>
               <div class="form-row" style="gap:12px;">
@@ -138,6 +139,13 @@
               </div>
               <div id="pkceVerifierBox" class="muted mono" style="display:none; font-size:11px;"></div>
               <div id="paramMutationBtns" class="chip-row"></div>
+              <div class="pane-subtitle">Token Endpoint Body Mutations (POST /token)</div>
+              <div class="chip-row">
+                <button id="tokStripVerifierBtn" class="chip" data-tip="Remove code_verifier from POST body to test if /token enforces PKCE.">Strip code_verifier</button>
+                <button id="tokMismatchRedirectBtn" class="chip" data-tip="Replace redirect_uri in POST body with attacker URI to test redirect_uri binding.">Mismatch redirect_uri</button>
+                <button id="tokDropRedirectBtn" class="chip" data-tip="Remove redirect_uri from POST body.">Drop redirect_uri</button>
+              </div>
+              <div id="replayResultBox" class="muted mono" style="display:none; font-size:11px;"></div>
 
               <div class="pane-subtitle">Headers (JSON)</div>
               <textarea id="repHeaders" class="input mono code-edit" rows="4">{}</textarea>

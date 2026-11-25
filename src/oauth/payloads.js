@@ -21,6 +21,15 @@ export const RedirectUriMutationType = Object.freeze({
   DOUBLE_URL_ENCODE: 'DOUBLE_URL_ENCODE',
   NULL_BYTE_TRUNCATION: 'NULL_BYTE_TRUNCATION',
   CRLF_INJECTION: 'CRLF_INJECTION',
+  HPP_DUPLICATE_PARAM: 'HPP_DUPLICATE_PARAM',
+  MATRIX_SEMICOLON: 'MATRIX_SEMICOLON',
+  IPV4_DECIMAL: 'IPV4_DECIMAL',
+  IPV4_HEX: 'IPV4_HEX',
+  IPV4_SHORT: 'IPV4_SHORT',
+  IPV4_ALL_ZEROS: 'IPV4_ALL_ZEROS',
+  WHITESPACE_TAB_HOST: 'WHITESPACE_TAB_HOST',
+  UNICODE_FULLWIDTH_SLASH: 'UNICODE_FULLWIDTH_SLASH',
+  CUSTOM_SCHEME_MOBILE: 'CUSTOM_SCHEME_MOBILE',
 });
 
 /**
@@ -177,12 +186,76 @@ export function generateRedirectUriMutations(baseRedirectUri, attackerHost = 'at
       uri: `${origin}${path}%0d%0aX-OAuth-Test:%20injected`,
       rationale: 'Tests whether raw CR/LF sequences in redirect_uri are reflected into Location headers.',
     },
+    {
+      id: RedirectUriMutationType.HPP_DUPLICATE_PARAM,
+      category: 'Parameter Pollution',
+      label: 'HTTP Parameter Pollution (duplicate redirect_uri)',
+      uri: `${origin}${path}&redirect_uri=https://${attacker}${path}`,
+      isHpp: true,
+      rationale: 'Tests if validator checks the first redirect_uri while the handler uses the second.',
+    },
+    {
+      id: RedirectUriMutationType.MATRIX_SEMICOLON,
+      category: 'Path Normalization',
+      label: 'Matrix / semicolon path confusion (;next=)',
+      uri: `${origin}${path};next=https://${attacker}`,
+      rationale: 'Tests Spring/Tomcat/Jetty semicolon matrix parameter handling.',
+    },
+    {
+      id: RedirectUriMutationType.IPV4_DECIMAL,
+      category: 'Local / Loopback',
+      label: 'Decimal IPv4 loopback (2130706433)',
+      uri: 'http://2130706433/callback',
+      rationale: 'Tests IPv4 allowlist bypass using decimal representation of 127.0.0.1.',
+    },
+    {
+      id: RedirectUriMutationType.IPV4_HEX,
+      category: 'Local / Loopback',
+      label: 'Hex IPv4 loopback (0x7f000001)',
+      uri: 'http://0x7f000001/callback',
+      rationale: 'Tests IPv4 allowlist bypass using hexadecimal representation of 127.0.0.1.',
+    },
+    {
+      id: RedirectUriMutationType.IPV4_SHORT,
+      category: 'Local / Loopback',
+      label: 'Shortened IPv4 loopback (127.1)',
+      uri: 'http://127.1/callback',
+      rationale: 'Tests IPv4 shorthand parsing differences.',
+    },
+    {
+      id: RedirectUriMutationType.IPV4_ALL_ZEROS,
+      category: 'Local / Loopback',
+      label: 'Unspecified IPv4 (0.0.0.0)',
+      uri: 'http://0.0.0.0/callback',
+      rationale: 'Tests if 0.0.0.0 is permitted as a local callback host.',
+    },
+    {
+      id: RedirectUriMutationType.WHITESPACE_TAB_HOST,
+      category: 'Injection / Encoding',
+      label: 'Tab character (%09) in hostname',
+      uri: `${parsed.protocol}//${host}%09.${attacker}${path}`,
+      rationale: 'Tests URL parsers that strip ASCII whitespace/tabs before routing.',
+    },
+    {
+      id: RedirectUriMutationType.UNICODE_FULLWIDTH_SLASH,
+      category: 'Parser Confusion',
+      label: 'Unicode fullwidth slash (%ef%bc%8f)',
+      uri: `${parsed.protocol}//${attacker}%ef%bc%8f@${host}${path}`,
+      rationale: 'Tests Unicode NFKC normalization turning fullwidth slash into /.',
+    },
+    {
+      id: RedirectUriMutationType.CUSTOM_SCHEME_MOBILE,
+      category: 'Scheme / Transport',
+      label: 'Custom mobile scheme (myapp://callback)',
+      uri: 'myapp://callback',
+      rationale: 'Tests if arbitrary custom URI schemes are accepted for mobile/desktop hijacking.',
+    },
   ];
 }
 
 /**
  * Generates common non-redirect OAuth parameter mutations for security testing.
- * @returns {Array<{id: string, label: string, description: string, apply: function}>}
+ * @returns {Array<{id: string, label: string, description: string, patch: object}>}
  */
 export function getOAuthParameterMutations() {
   return [
@@ -203,6 +276,24 @@ export function getOAuthParameterMutations() {
       label: 'Switch response_type=code id_token',
       description: 'Requests an id_token directly from the authorization endpoint.',
       patch: { response_type: 'code id_token' },
+    },
+    {
+      id: 'RESPONSE_MODE_QUERY',
+      label: 'Force response_mode=query',
+      description: 'Forces tokens/codes into URL query string instead of fragment/form_post.',
+      patch: { response_mode: 'query' },
+    },
+    {
+      id: 'RESPONSE_MODE_FRAGMENT',
+      label: 'Force response_mode=fragment',
+      description: 'Forces response parameters into URL fragment.',
+      patch: { response_mode: 'fragment' },
+    },
+    {
+      id: 'PROMPT_NONE',
+      label: 'Set prompt=none (Silent Auth)',
+      description: 'Probes silent authentication without user interaction.',
+      patch: { prompt: 'none' },
     },
     {
       id: 'PKCE_METHOD_PLAIN',

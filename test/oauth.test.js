@@ -130,4 +130,11 @@ test('buildUrlWithRawRedirectUri preserves %XX sequences without double-encoding
   );
   assert.ok(out.includes('redirect_uri=https://app.example.com/cb%0d%0aX-Test:%201%23frag'));
   assert.ok(!out.includes('%250d%250a'));
+
+  const hppOut = buildUrlWithRawRedirectUri(
+    'https://auth.example.com/authorize?client_id=c1&redirect_uri=https://app.example.com/cb',
+    'https://app.example.com/cb&redirect_uri=https://evil.test/cb',
+    { isHpp: true }
+  );
+  assert.ok(hppOut.includes('redirect_uri=https://app.example.com/cb&redirect_uri=https://evil.test/cb'));
 });
