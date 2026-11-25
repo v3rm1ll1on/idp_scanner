@@ -785,7 +785,47 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Floating viewport-clamped tooltips (never clipped by overflow:auto panes)
+function initTooltips() {
+  const tipEl = document.createElement('div');
+  tipEl.className = 'floating-tooltip';
+  document.body.appendChild(tipEl);
+
+  let activeTarget = null;
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest?.('[data-tip]');
+    if (!target) return;
+    activeTarget = target;
+    tipEl.textContent = target.dataset.tip;
+    tipEl.style.display = 'block';
+
+    const rect = target.getBoundingClientRect();
+    const tipRect = tipEl.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - tipRect.width / 2;
+    left = Math.max(8, Math.min(window.innerWidth - tipRect.width - 8, left));
+
+    let top = rect.bottom + 6;
+    if (top + tipRect.height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - tipRect.height - 6);
+    }
+
+    tipEl.style.left = `${Math.round(left)}px`;
+    tipEl.style.top = `${Math.round(top)}px`;
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (!activeTarget) return;
+    const related = e.relatedTarget;
+    if (!related || !activeTarget.contains(related)) {
+      activeTarget = null;
+      tipEl.style.display = 'none';
+    }
+  });
+}
+
 // Init
+initTooltips();
 initResizers();
 loadMockConfig();
 loadParamMutations();

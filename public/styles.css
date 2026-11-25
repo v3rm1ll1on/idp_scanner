@@ -407,16 +407,11 @@ table.kv-table {
   font-weight: 600;
 }
 
-/* Instant technical tooltips */
-[data-tip] {
-  position: relative;
-}
-[data-tip]:hover::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 6px);
-  transform: translateX(-50%);
+/* Instant viewport-aware floating tooltip */
+.floating-tooltip {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
   background: #020617;
   color: var(--text-0);
   border: 1px solid var(--border);
@@ -426,12 +421,9 @@ table.kv-table {
   font-size: 11px;
   font-weight: 400;
   line-height: 1.4;
-  white-space: normal;
-  width: max-content;
   max-width: 280px;
-  z-index: 1000;
-  pointer-events: none;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55);
+  display: none;
 }
 
 /* Help Modal */
