@@ -860,6 +860,9 @@ $('clearTracesBtn').addEventListener('click', async () => {
   state.paramBatchResults.clear();
   state.tokenBatchResults.clear();
   state.customBatchData = null;
+  $('repResponsePreview').textContent = 'Send a request to preview the response here.';
+  $('repResTabBadge').textContent = '-';
+  $('repResTabBadge').className = 'badge badge-muted';
   renderRedirectMutations();
   renderParamFuzzerTable();
   renderTokenFuzzerTable();
@@ -1475,7 +1478,10 @@ function connectTraceStream() {
   es.addEventListener('clear', () => {
     state.traces = [];
     state.selectedTraceId = null;
+    state.baselineTraceId = null;
+    state.expandedTraces.clear();
     renderTraceList();
+    renderSelectedTrace();
     renderSequenceDiagram();
   });
   es.onerror = () => {
