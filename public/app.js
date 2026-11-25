@@ -2,6 +2,7 @@ const state = {
   traces: [],
   selectedTraceId: null,
   baselineTraceId: null,
+  expandedTraces: new Set(),
   redirectMutations: [],
   paramMutations: [],
   batchResults: new Map(),
@@ -92,33 +93,45 @@ function renderTraceList() {
   container.innerHTML = state.traces
     .map((t) => {
       const active = t.id === state.selectedTraceId ? 'active' : '';
+      const expanded = state.expandedTraces.has(t.id) ? 'expanded' : '';
       const findingsCount = (t.audit?.findings || []).filter((f) => f.severity === 'HIGH' || f.severity === 'MEDIUM').length;
       const urlObj = (() => {
         try { return new URL(t.request.url); } catch { return { pathname: t.request.url }; }
       })();
-      const timeStr = formatTraceTime(t.timestamp);
+      const timeStr = formatTraceTime(t.timestamp).slice(0, 8);
       return `
-        <div class="trace-item ${active}" data-id="${t.id}">
-          <div class="trace-row">
-            <span>
-              <span class="badge badge-muted">${escapeHtml(t.request.method)}</span>
-              <span class="badge ${statusBadgeClass(t.response.status)}">${t.response.status || 'ERR'}</span>
-            </span>
-            <span class="trace-time" title="${escapeHtml(t.timestamp || '')}">${escapeHtml(timeStr)} · ${t.durationMs}ms${findingsCount ? ` · <span style="color:#fbbf24">${findingsCount}f</span>` : ''}</span>
+        <div class="trace-item ${active} ${expanded}" data-id="${t.id}">
+          <div class="trace-compact-row">
+            <button class="trace-expand-btn" data-id="${t.id}" title="Expand / collapse details">${expanded ? '▾' : '▸'}</button>
+            <span class="badge badge-muted">${escapeHtml(t.request.method)}</span>
+            <span class="badge ${statusBadgeClass(t.response.status)}">${t.response.status || 'ERR'}</span>
+            <span class="trace-path" title="${escapeHtml(t.request.url)}">${escapeHtml(urlObj.pathname)}</span>
+            <span class="trace-time" title="${escapeHtml(t.timestamp || '')}">${escapeHtml(timeStr)}${findingsCount ? ` · <span style="color:#fbbf24">${findingsCount}f</span>` : ''}</span>
           </div>
-          <div class="trace-path" title="${escapeHtml(t.request.url)}">${escapeHtml(urlObj.pathname)}</div>
-          ${renderTraceParamsHtml(t.request.url)}
-          <div class="trace-row">
-            <span class="muted" style="font-size:10.5px;">${escapeHtml(t.flowKind || t.label)}</span>
-            <span class="trace-actions">
-              <button class="btn-mini trace-copy-curl" data-id="${t.id}" data-tip="Copy this request as cURL">cURL</button>
-              <button class="btn-mini trace-to-rep" data-id="${t.id}" data-tip="Load into Repeater">-&gt; Rep</button>
-            </span>
+          <div class="trace-details">
+            ${renderTraceParamsHtml(t.request.url)}
+            <div class="trace-row">
+              <span class="muted" style="font-size:10.5px;">${escapeHtml(t.flowKind || t.label)} · ${t.durationMs}ms</span>
+              <span class="trace-actions">
+                <button class="btn-mini trace-copy-curl" data-id="${t.id}" data-tip="Copy this request as cURL">cURL</button>
+                <button class="btn-mini trace-to-rep" data-id="${t.id}" data-tip="Load into Repeater">-&gt; Rep</button>
+              </span>
+            </div>
           </div>
         </div>
       `;
     })
     .join('');
+
+  container.querySelectorAll('.trace-expand-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (state.expandedTraces.has(id)) state.expandedTraces.delete(id);
+      else state.expandedTraces.add(id);
+      renderTraceList();
+    });
+  });
 
   container.querySelectorAll('.trace-copy-curl').forEach((btn) => {
     btn.addEventListener('click', (e) => {

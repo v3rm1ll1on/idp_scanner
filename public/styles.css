@@ -162,7 +162,7 @@ html, body {
 }
 
 .trace-item {
-  padding: 8px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   display: flex;
@@ -171,6 +171,37 @@ html, body {
 }
 .trace-item:hover { background: var(--bg-2); }
 .trace-item.active { background: #17253b; border-left: 3px solid var(--accent); padding-left: 7px; }
+
+.trace-compact-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.trace-compact-row .trace-path {
+  flex: 1;
+  min-width: 0;
+}
+.trace-expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 11px;
+  line-height: 1;
+}
+.trace-expand-btn:hover { color: var(--text-0); }
+.trace-details {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+.trace-item.expanded .trace-details {
+  display: flex;
+}
 
 .trace-row {
   display: flex;
