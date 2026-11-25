@@ -550,3 +550,50 @@ table.kv-table {
   justify-content: flex-end;
   white-space: nowrap;
 }
+
+.trace-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+.btn-mini {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.btn-mini:hover { border-color: var(--accent); color: var(--text-0); }
+
+.fuzzer-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.fuzzer-tab {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fuzzer-tab.active {
+  background: var(--bg-2);
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+.fuzzer-panel {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+.fuzzer-panel.active { display: flex; }

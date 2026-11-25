@@ -3,7 +3,9 @@ const state = {
   selectedTraceId: null,
   baselineTraceId: null,
   redirectMutations: [],
+  paramMutations: [],
   batchResults: new Map(),
+  paramBatchResults: new Map(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -106,11 +108,36 @@ function renderTraceList() {
           </div>
           <div class="trace-path" title="${escapeHtml(t.request.url)}">${escapeHtml(urlObj.pathname)}</div>
           ${renderTraceParamsHtml(t.request.url)}
-          <div class="muted" style="font-size:10.5px;">${escapeHtml(t.flowKind || t.label)}</div>
+          <div class="trace-row">
+            <span class="muted" style="font-size:10.5px;">${escapeHtml(t.flowKind || t.label)}</span>
+            <span class="trace-actions">
+              <button class="btn-mini trace-copy-curl" data-id="${t.id}" data-tip="Copy this request as cURL">cURL</button>
+              <button class="btn-mini trace-to-rep" data-id="${t.id}" data-tip="Load into Repeater">-&gt; Rep</button>
+            </span>
+          </div>
         </div>
       `;
     })
     .join('');
+
+  container.querySelectorAll('.trace-copy-curl').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const trace = state.traces.find((t) => t.id === btn.dataset.id);
+      if (trace) copyTraceAsCurl(trace);
+    });
+  });
+
+  container.querySelectorAll('.trace-to-rep').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.selectedTraceId = btn.dataset.id;
+      renderTraceList();
+      renderSelectedTrace();
+      renderSequenceDiagram();
+      document.querySelector('[data-tab="repeater"]').click();
+    });
+  });
 
   container.querySelectorAll('.trace-item').forEach((el) => {
     el.addEventListener('click', () => {
@@ -432,31 +459,72 @@ async function loadParamMutations() {
     method: 'POST',
     body: JSON.stringify({ input: 'https://example.com/authorize?client_id=demo&response_type=code' }),
   });
+  state.paramMutations = res.paramMutations || [];
   const container = $('paramMutationBtns');
-  container.innerHTML = (res.paramMutations || [])
+  container.innerHTML = state.paramMutations
     .map((m) => `<button class="chip" data-patch='${escapeHtml(JSON.stringify(m.patch))}' title="${escapeHtml(m.description)}">${escapeHtml(m.label)}</button>`)
     .join('');
 
   container.querySelectorAll('.chip').forEach((chip) => {
     chip.addEventListener('click', () => {
-      try {
-        const u = new URL($('repUrl').value);
-        const patch = JSON.parse(chip.dataset.patch);
-        for (const [k, v] of Object.entries(patch)) {
-          if (k === 'scope_append') {
-            const cur = u.searchParams.get('scope') || 'openid';
-            u.searchParams.set('scope', `${cur} ${v}`.trim());
-          } else if (v === null) {
-            u.searchParams.delete(k);
-          } else {
-            u.searchParams.set(k, v);
-          }
-        }
-        $('repUrl').value = u.toString();
-      } catch {
-        // Ignore if repeater URL is not valid yet
-      }
+      applyParamPatchToRepeater(JSON.parse(chip.dataset.patch));
     });
+  });
+  renderParamFuzzerTable();
+}
+
+function applyParamPatchToRepeater(patch) {
+  try {
+    const u = new URL($('repUrl').value);
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === 'scope_append') {
+        const cur = u.searchParams.get('scope') || 'openid';
+        u.searchParams.set('scope', `${cur} ${v}`.trim());
+      } else if (v === null) {
+        u.searchParams.delete(k);
+      } else {
+        u.searchParams.set(k, v);
+      }
+    }
+    $('repUrl').value = u.toString();
+  } catch {
+    // Ignore if repeater URL is not valid yet
+  }
+}
+
+function renderParamFuzzerTable() {
+  const wrap = $('paramFuzzerList');
+  if (!state.paramMutations.length) {
+    wrap.innerHTML = '<div class="muted">No parameter probes loaded.</div>';
+    return;
+  }
+  const rows = state.paramMutations
+    .map((m) => {
+      const res = state.paramBatchResults.get(m.id);
+      const badgeCls = !res ? '' : res.accepted ? 'badge-danger' : res.verdict === 'REDIRECT_ERROR' ? 'badge-warn' : 'badge-ok';
+      const statusCell = res
+        ? `<span class="badge ${badgeCls}">${escapeHtml(res.verdict)} (${res.status})</span>`
+        : '<span class="muted">-</span>';
+      return `
+        <tr>
+          <td>
+            <div style="font-weight:600;">${escapeHtml(m.label)}</div>
+            <div class="muted">${escapeHtml(m.description)}</div>
+          </td>
+          <td>${statusCell}</td>
+          <td><button class="btn btn-secondary use-param-mut-btn" data-patch='${escapeHtml(JSON.stringify(m.patch))}'>Load</button></td>
+        </tr>
+      `;
+    })
+    .join('');
+  wrap.innerHTML = `
+    <table class="mut-table">
+      <thead><tr><th>Probe</th><th>Result</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  wrap.querySelectorAll('.use-param-mut-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyParamPatchToRepeater(JSON.parse(btn.dataset.patch)));
   });
 }
 
@@ -691,6 +759,18 @@ $('clearTracesBtn').addEventListener('click', async () => {
   await loadTraces();
 });
 
+$('pasteParseBtn').addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      $('parseInput').value = text;
+      $('parseBtn').click();
+    }
+  } catch {
+    $('parseInput').focus();
+  }
+});
+
 $('parseBtn').addEventListener('click', async () => {
   const input = $('parseInput').value.trim();
   if (!input) return;
@@ -784,6 +864,31 @@ $('tokDropRedirectBtn').addEventListener('click', () => {
   mutateTokenBody((p) => p.delete('redirect_uri'));
 });
 
+document.querySelectorAll('.fuzzer-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.fuzzer-tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.fuzzer-panel').forEach((p) => p.classList.remove('active'));
+    tab.classList.add('active');
+    $(`fuzzer-${tab.dataset.fuzzer}`).classList.add('active');
+  });
+});
+
+$('batchParamsBtn').addEventListener('click', async () => {
+  const baseUrl = $('repUrl').value.trim();
+  if (!baseUrl) return;
+  const useCookieJar = $('repUseCookieJar').checked;
+  const data = await api('/api/mutations/params/batch', {
+    method: 'POST',
+    body: JSON.stringify({ baseUrl, useCookieJar }),
+  });
+  state.paramBatchResults.clear();
+  for (const r of data.results || []) {
+    state.paramBatchResults.set(r.id, r);
+  }
+  renderParamFuzzerTable();
+  await loadTraces();
+});
+
 $('batchRedirectBtn').addEventListener('click', async () => {
   const baseUrl = $('repUrl').value.trim();
   if (!baseUrl) return;
@@ -852,9 +957,7 @@ async function copyToClipboard(text, label) {
   showCopyFeedback(label);
 }
 
-$('copyCurlBtn').addEventListener('click', async () => {
-  const trace = state.traces.find((t) => t.id === state.selectedTraceId);
-  if (!trace) return;
+async function copyTraceAsCurl(trace) {
   const parts = [`curl -i -X ${trace.request.method}`];
   for (const [k, v] of Object.entries(trace.request.headers || {})) {
     parts.push(`-H ${JSON.stringify(`${k}: ${v}`)}`);
@@ -864,6 +967,11 @@ $('copyCurlBtn').addEventListener('click', async () => {
   }
   parts.push(JSON.stringify(trace.request.url));
   await copyToClipboard(parts.join(' \\\n  '), 'Copied cURL');
+}
+
+$('copyCurlBtn').addEventListener('click', async () => {
+  const trace = state.traces.find((t) => t.id === state.selectedTraceId);
+  if (trace) await copyTraceAsCurl(trace);
 });
 
 $('copyRawHttpBtn').addEventListener('click', async () => {

@@ -48,6 +48,7 @@
     <main class="main">
       <section class="parser-bar">
         <textarea id="parseInput" class="input mono parse-textarea" rows="2" placeholder="Paste OAuth URL (https://...) or raw HTTP request (GET /authorize?... HTTP/1.1&#10;Host: ...)"></textarea>
+        <button id="pasteParseBtn" class="btn btn-ghost" data-tip="Paste from clipboard and parse immediately.">Paste</button>
         <button id="parseBtn" class="btn btn-secondary" data-tip="Parse URL or raw Burp HTTP request, audit OAuth parameters, and load into Repeater.">Parse &amp; Load</button>
       </section>
 
@@ -155,13 +156,27 @@
             </div>
             <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
-              <div class="pane-title">Redirect-URI Mutation Matrix</div>
-              <div class="form-row">
-                <input id="attackerHostInput" class="input mono" type="text" value="attacker.example" placeholder="Attacker host" data-tip="Host domain used in generated redirect_uri bypass payloads." />
-                <button id="refreshMutationsBtn" class="btn btn-secondary" data-tip="Regenerate all 19 redirect_uri bypass payloads for the current redirect_uri and attacker host.">Generate</button>
-                <button id="batchRedirectBtn" class="btn btn-danger" data-tip="Send all 19 redirect_uri payloads against the Repeater URL (without following redirects) and classify server responses.">Run Batch Probe</button>
+              <div class="fuzzer-tabs">
+                <button class="fuzzer-tab active" data-fuzzer="redirect">Redirect-URI Fuzzer (28)</button>
+                <button class="fuzzer-tab" data-fuzzer="params">OAuth Param Fuzzer (9)</button>
               </div>
-              <div id="redirectMutationList" class="mutation-table-wrap"></div>
+
+              <div id="fuzzer-redirect" class="fuzzer-panel active">
+                <div class="form-row">
+                  <input id="attackerHostInput" class="input mono" type="text" value="attacker.example" placeholder="Attacker host" data-tip="Host domain used in generated redirect_uri bypass payloads." />
+                  <button id="refreshMutationsBtn" class="btn btn-secondary" data-tip="Regenerate all 28 redirect_uri bypass payloads for the current redirect_uri and attacker host.">Generate</button>
+                  <button id="batchRedirectBtn" class="btn btn-danger" data-tip="Send all 28 redirect_uri payloads against the Repeater URL (without following redirects) and classify server responses.">Run Batch Probe</button>
+                </div>
+                <div id="redirectMutationList" class="mutation-table-wrap"></div>
+              </div>
+
+              <div id="fuzzer-params" class="fuzzer-panel">
+                <div class="form-row">
+                  <span class="muted" style="flex:1;">Tests state removal, implicit downgrade, response_mode, prompt=none, PKCE downgrade/strip, scope escalation.</span>
+                  <button id="batchParamsBtn" class="btn btn-danger" data-tip="Run all 9 OAuth parameter probes against the current Repeater URL.">Run Param Fuzzer</button>
+                </div>
+                <div id="paramFuzzerList" class="mutation-table-wrap"></div>
+              </div>
             </div>
           </div>
         </div>

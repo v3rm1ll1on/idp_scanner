@@ -224,6 +224,32 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     );
     assert.equal(hppRes.status, 302);
     assert.ok(hppRes.headers.get('location').startsWith('https://evil.example/cb'));
+
+    // 7. OAuth Param Fuzzer batch probe
+    mockIdp.setConfig({ allowMissingState: true, allowImplicitDowngrade: true });
+    const paramBatchRes = await fetch(`${baseUrl}/api/mutations/params/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: pkceAuthUrl,
+        mutationIds: ['REMOVE_STATE', 'DOWNGRADE_IMPLICIT_TOKEN'],
+      }),
+    });
+    assert.equal(paramBatchRes.status, 200);
+    const paramBatch = await paramBatchRes.json();
+    assert.equal(paramBatch.results.every((r) => r.accepted === true && r.verdict === 'ACCEPTED (RISK)'), true);
+
+    mockIdp.setConfig({ allowMissingState: false, allowImplicitDowngrade: false });
+    const strictParamRes = await fetch(`${baseUrl}/api/mutations/params/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: pkceAuthUrl,
+        mutationIds: ['REMOVE_STATE', 'DOWNGRADE_IMPLICIT_TOKEN'],
+      }),
+    });
+    const strictParamBatch = await strictParamRes.json();
+    assert.equal(strictParamBatch.results.every((r) => r.accepted === false && r.verdict === 'BLOCKED'), true);
   } finally {
     server.close();
   }

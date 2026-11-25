@@ -314,3 +314,74 @@ export async function batchTestRedirectUris(
 
   return results;
 }
+
+/**
+ * Tests a batch of OAuth parameter mutations (state, response_type, PKCE, scope, prompt) against an authorize URL.
+ * @param {TraceStore} store
+ * @param {object} options
+ * @returns {Promise<Array<object>>}
+ */
+export async function batchTestOAuthParams(
+  store,
+  { baseUrl, headers = {}, mutations = [], cookieJar = null }
+) {
+  const results = [];
+
+  for (const mut of mutations) {
+    const targetUrl = new URL(baseUrl);
+    for (const [k, v] of Object.entries(mut.patch || {})) {
+      if (k === 'scope_append') {
+        const cur = targetUrl.searchParams.get('scope') || 'openid';
+        targetUrl.searchParams.set('scope', `${cur} ${v}`.trim());
+      } else if (v === null) {
+        targetUrl.searchParams.delete(k);
+      } else {
+        targetUrl.searchParams.set(k, v);
+      }
+    }
+
+    try {
+      const hops = await sendAndTrace(store, {
+        method: 'GET',
+        url: targetUrl.toString(),
+        headers,
+        followRedirects: false,
+        maxHops: 1,
+        cookieJar,
+        label: `param_probe:${mut.id}`,
+      });
+
+      const hop = hops[0];
+      const status = hop.response.status;
+      const location = hop.response.location || '';
+      const hasError = /([?&#])error=/i.test(location);
+      const accepted = status >= 300 && status < 400 && !hasError;
+
+      results.push({
+        id: mut.id,
+        label: mut.label,
+        description: mut.description,
+        testedUrl: targetUrl.toString(),
+        status,
+        location,
+        accepted,
+        verdict: accepted ? 'ACCEPTED (RISK)' : hasError ? 'REDIRECT_ERROR' : 'BLOCKED',
+        traceId: hop.id,
+      });
+    } catch (err) {
+      results.push({
+        id: mut.id,
+        label: mut.label,
+        description: mut.description,
+        testedUrl: targetUrl.toString(),
+        status: 0,
+        location: '',
+        accepted: false,
+        verdict: 'ERROR',
+        error: err.message,
+      });
+    }
+  }
+
+  return results;
+}

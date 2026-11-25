@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createMockIdp } from './mock-idp.js';
-import { TraceStore, sendAndTrace, batchTestRedirectUris } from './tracer.js';
+import { TraceStore, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams } from './tracer.js';
 import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
 import { generateRedirectUriMutations, getOAuthParameterMutations } from './oauth/payloads.js';
@@ -193,6 +193,30 @@ export function createApp() {
         headers,
         mutations,
         attackerHost,
+        cookieJar: useCookieJar ? cookieJar : null,
+      });
+      return res.json({ results });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/mutations/params/batch', async (req, res) => {
+    const { baseUrl, headers = {}, mutationIds, useCookieJar = true } = req.body || {};
+    if (!baseUrl) {
+      return res.status(400).json({ error: 'Missing baseUrl' });
+    }
+    try {
+      new URL(baseUrl);
+      let mutations = getOAuthParameterMutations();
+      if (Array.isArray(mutationIds) && mutationIds.length > 0) {
+        const allow = new Set(mutationIds);
+        mutations = mutations.filter((m) => allow.has(m.id));
+      }
+      const results = await batchTestOAuthParams(store, {
+        baseUrl,
+        headers,
+        mutations,
         cookieJar: useCookieJar ? cookieJar : null,
       });
       return res.json({ results });
