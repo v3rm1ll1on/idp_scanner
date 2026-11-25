@@ -15,9 +15,9 @@
     </div>
 
     <div class="topbar-controls">
-      <input id="issuerInput" class="input mono" type="text" value="http://localhost:3000/mock-idp" placeholder="Issuer or /.well-known/openid-configuration URL" />
+      <input id="issuerInput" class="input mono" type="text" value="" placeholder="Issuer or /.well-known/openid-configuration URL (e.g. https://auth.target.com)" />
       <button id="discoverBtn" class="btn btn-secondary" data-tip="Fetch /.well-known/openid-configuration or oauth-authorization-server from the target issuer.">Discover</button>
-      <button id="demoFlowBtn" class="btn btn-primary" data-tip="Execute a full Authorization Code flow (Authorize -> Callback -> Token -> UserInfo) against the local Mock IdP.">Run Demo Flow</button>
+      <button id="demoFlowBtn" class="btn btn-primary" style="display:none;" data-tip="Execute a full Authorization Code flow (Authorize -> Callback -> Token -> UserInfo) against the local Mock IdP.">Run Demo Flow</button>
       <button id="clearTracesBtn" class="btn btn-ghost" data-tip="Clear all recorded HTTP traces and sequence steps.">Clear</button>
       <button id="helpBtn" class="btn btn-secondary" data-tip="Open Pentester Reference & Help (?)" style="font-weight:700;">?</button>
     </div>
@@ -31,7 +31,7 @@
       </div>
       <div id="traceList" class="trace-list"></div>
 
-      <details class="mock-config" open>
+      <details id="mockConfigSection" class="mock-config" style="display:none;" open>
         <summary class="panel-header clickable" data-tip="Toggle intentional vulnerabilities on the local /mock-idp sandbox.">Mock IdP Security Toggles</summary>
         <div class="mock-toggles" id="mockToggles">
           <label data-tip="Accept any redirect_uri (enables open redirect bypasses)."><input type="checkbox" data-key="allowOpenRedirect" /> allowOpenRedirect</label>

@@ -1599,9 +1599,18 @@ function initTooltips() {
 }
 
 // Init
+const isDemoMode = new URLSearchParams(window.location.search).get('demo') === 'true';
+if (isDemoMode) {
+  $('demoFlowBtn').style.display = 'inline-block';
+  $('mockConfigSection').style.display = 'block';
+  if (!$('issuerInput').value) {
+    $('issuerInput').value = `${window.location.origin}/mock-idp`;
+  }
+  loadMockConfig();
+}
+
 initTooltips();
 initResizers();
-loadMockConfig();
 loadParamMutations();
 loadTokenMutations();
 loadCustomPresets();
