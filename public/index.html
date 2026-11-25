@@ -42,6 +42,8 @@
       </details>
     </aside>
 
+    <div id="sidebarResizer" class="resizer-v" title="Drag to resize sidebar"></div>
+
     <main class="main">
       <section class="parser-bar">
         <textarea id="parseInput" class="input mono parse-textarea" rows="2" placeholder="Paste OAuth URL (https://...) or raw HTTP request (GET /authorize?... HTTP/1.1&#10;Host: ...)"></textarea>
@@ -55,6 +57,8 @@
         </div>
         <div id="sequenceDiagram" class="diagram-canvas"></div>
       </section>
+
+      <div id="diagramResizer" class="resizer-h" title="Drag to resize sequence visualizer"></div>
 
       <section class="workbench-tabs">
         <div class="tab-bar">
@@ -84,6 +88,7 @@
               <div class="pane-subtitle">Body</div>
               <pre id="reqBody" class="code-block"></pre>
             </div>
+            <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
               <div class="pane-title">Response <span id="resStatusBadge"></span></div>
               <pre id="resSummary" class="code-block">No trace selected.</pre>
@@ -139,7 +144,7 @@
               <div class="pane-subtitle">Body</div>
               <textarea id="repBody" class="input mono code-edit" rows="4"></textarea>
             </div>
-
+            <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
               <div class="pane-title">Redirect-URI Mutation Matrix</div>
               <div class="form-row">
@@ -158,6 +163,7 @@
               <div class="pane-title">Security Findings</div>
               <div id="auditFindings" class="findings-list">Select a trace or parse a request.</div>
             </div>
+            <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
               <div class="pane-title">JWT Inspector</div>
               <div class="form-row">

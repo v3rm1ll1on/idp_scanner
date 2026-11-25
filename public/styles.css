@@ -16,7 +16,16 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 var(--bg-0);
+}
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: var(--bg-0); }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
 
 html, body {
   margin: 0;
@@ -98,10 +107,31 @@ html, body {
 .badge-info { background: rgba(56, 189, 248, 0.16); color: #38bdf8; }
 
 .layout {
+  --sidebar-w: 310px;
   display: grid;
-  grid-template-columns: 310px 1fr;
+  grid-template-columns: var(--sidebar-w) 5px 1fr;
   height: calc(100vh - 48px);
 }
+
+.resizer-v {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--bg-1);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.resizer-v:hover, .resizer-v.dragging { background: var(--accent-dim); }
+
+.resizer-h {
+  height: 5px;
+  cursor: row-resize;
+  background: var(--bg-1);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.resizer-h:hover, .resizer-h.dragging { background: var(--accent-dim); }
 
 .sidebar {
   background: var(--bg-1);
@@ -186,11 +216,12 @@ html, body {
 .parse-textarea { resize: vertical; min-height: 36px; max-height: 110px; }
 
 .diagram-section {
-  border-bottom: 1px solid var(--border);
   background: var(--bg-0);
 }
 .diagram-canvas {
-  height: 185px;
+  height: var(--diagram-h, 195px);
+  min-height: 90px;
+  max-height: 460px;
   overflow: auto;
   padding: 8px 12px;
 }
@@ -231,10 +262,18 @@ html, body {
 .tab-content.active { display: block; }
 
 .split-2 {
+  --split-left: 1fr;
+  --split-right: 1fr;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: var(--split-left) 5px var(--split-right);
+  gap: 0;
   height: 100%;
+  min-height: 0;
+}
+
+.split-2 > .resizer-v {
+  margin: 0 4px;
+  border-radius: 2px;
 }
 
 .pane {

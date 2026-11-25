@@ -273,7 +273,7 @@ function renderSequenceDiagram() {
   const rowH = 38;
   const height = 46 + group.length * rowH + 20;
 
-  let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`;
+  let svg = `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin meet" style="max-width:1150px; display:block; margin:0 auto;" xmlns="http://www.w3.org/2000/svg">`;
   svg += `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8"/></marker></defs>`;
 
   actors.forEach((name, idx) => {
@@ -716,7 +716,61 @@ function connectTraceStream() {
   };
 }
 
+function initResizers() {
+  const layout = document.querySelector('.layout');
+  const savedSidebar = localStorage.getItem('owb_sidebar_w');
+  if (savedSidebar) layout.style.setProperty('--sidebar-w', `${savedSidebar}px`);
+
+  const savedDiagram = localStorage.getItem('owb_diagram_h');
+  if (savedDiagram) document.documentElement.style.setProperty('--diagram-h', `${savedDiagram}px`);
+
+  function attachDrag(handle, onMove) {
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+
+      const moveHandler = (ev) => onMove(ev);
+      const upHandler = () => {
+        handle.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', moveHandler);
+        window.removeEventListener('pointerup', upHandler);
+      };
+
+      window.addEventListener('pointermove', moveHandler);
+      window.addEventListener('pointerup', upHandler);
+    });
+  }
+
+  attachDrag($('sidebarResizer'), (ev) => {
+    const w = Math.max(220, Math.min(560, ev.clientX));
+    layout.style.setProperty('--sidebar-w', `${w}px`);
+    localStorage.setItem('owb_sidebar_w', String(Math.round(w)));
+  });
+
+  const diagramCanvas = $('sequenceDiagram');
+  attachDrag($('diagramResizer'), (ev) => {
+    const rect = diagramCanvas.getBoundingClientRect();
+    const h = Math.max(90, Math.min(460, ev.clientY - rect.top));
+    document.documentElement.style.setProperty('--diagram-h', `${h}px`);
+    localStorage.setItem('owb_diagram_h', String(Math.round(h)));
+  });
+
+  document.querySelectorAll('.split-resizer').forEach((resizer) => {
+    const split = resizer.closest('.split-2');
+    attachDrag(resizer, (ev) => {
+      const rect = split.getBoundingClientRect();
+      const pct = Math.max(20, Math.min(80, ((ev.clientX - rect.left) / rect.width) * 100));
+      split.style.setProperty('--split-left', `${pct.toFixed(1)}%`);
+      split.style.setProperty('--split-right', `${(100 - pct).toFixed(1)}%`);
+    });
+  });
+}
+
 // Init
+initResizers();
 loadMockConfig();
 loadParamMutations();
 refreshRedirectMutations('http://localhost:3000/callback');
