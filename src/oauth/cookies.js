@@ -71,6 +71,9 @@ export class CookieJar {
 
       const host = urlObj.hostname.toLowerCase();
       const domain = parsed.domain ? parsed.domain.replace(/^\./, '') : host;
+      if (parsed.domain && host !== domain && !host.endsWith(`.${domain}`)) {
+        continue;
+      }
       const hostOnly = !parsed.domain;
       const key = `${domain}|${parsed.path}|${parsed.name}`;
 
@@ -112,7 +115,10 @@ export class CookieJar {
         ? host === c.domain
         : host === c.domain || host.endsWith(`.${c.domain}`);
       if (!domainMatch) continue;
-      if (!path.startsWith(c.path)) continue;
+      const pathMatch =
+        path === c.path ||
+        (c.path.endsWith('/') ? path.startsWith(c.path) : path.startsWith(`${c.path}/`));
+      if (!pathMatch) continue;
       if (c.secure && !isHttps && !isLoopback) continue;
       matched.push(`${c.name}=${c.value}`);
     }

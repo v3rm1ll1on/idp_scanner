@@ -128,12 +128,17 @@ test('parseSetCookieHeader and CookieJar handle attributes, scoping, and expiry'
   const jar = new CookieJar();
   jar.setFromHeaders('https://auth.example.com/authorize', [
     'sso_sid=xyz123; Domain=.example.com; Path=/; HttpOnly; SameSite=Lax',
-    'host_only=abc; Path=/authorize',
+    'host_only=abc; Path=/auth',
   ]);
 
   assert.equal(jar.getCookieHeader('https://app.example.com/callback'), 'sso_sid=xyz123');
-  assert.equal(jar.getCookieHeader('https://auth.example.com/authorize'), 'sso_sid=xyz123; host_only=abc');
+  assert.equal(jar.getCookieHeader('https://auth.example.com/authorize'), 'sso_sid=xyz123');
+  assert.equal(jar.getCookieHeader('https://auth.example.com/auth/login'), 'sso_sid=xyz123; host_only=abc');
   assert.equal(jar.getCookieHeader('https://unrelated.org/'), null);
+
+  // Reject cross-domain cookie injection
+  jar.setFromHeaders('https://evil.org/login', ['hijack=1; Domain=example.com; Path=/']);
+  assert.equal(jar.getCookieHeader('https://app.example.com/'), 'sso_sid=xyz123');
 
   jar.clear();
   assert.equal(jar.list().length, 0);

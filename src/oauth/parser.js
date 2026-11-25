@@ -55,7 +55,11 @@ export function parseRawHttpRequest(rawRequest, defaultScheme = 'https') {
     if (colonIdx === -1) continue;
     const name = lines[i].slice(0, colonIdx).trim();
     const value = lines[i].slice(colonIdx + 1).trim();
-    headers[name] = value;
+    if (name.toLowerCase() === 'cookie' && headers[name]) {
+      headers[name] = `${headers[name]}; ${value}`;
+    } else {
+      headers[name] = value;
+    }
   }
 
   let fullUrl;
