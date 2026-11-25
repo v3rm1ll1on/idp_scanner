@@ -65,10 +65,10 @@
 
       <section class="workbench-tabs">
         <div class="tab-bar">
-          <button class="tab active" data-tab="inspector">Inspector</button>
-          <button class="tab" data-tab="repeater">Repeater &amp; Redirect-URI Fuzzer</button>
-          <button class="tab" data-tab="audit">Tokens &amp; Audit <span id="auditTabBadge" class="badge badge-muted">0</span></button>
-          <button class="tab" data-tab="discovery">Discovery</button>
+          <button class="tab active" data-tab="inspector" data-tip="Inspect full HTTP request/response headers, cookies, OAuth params, and baseline diffs.">Inspector</button>
+          <button class="tab" data-tab="repeater" data-tip="Edit/replay requests and run Redirect-URI, Auth Param, Token, and Custom Field fuzzers.">Repeater &amp; Redirect-URI Fuzzer</button>
+          <button class="tab" data-tab="audit" data-tip="Review security findings, decode JWTs, and verify signatures via JWKS.">Tokens &amp; Audit <span id="auditTabBadge" class="badge badge-muted">0</span></button>
+          <button class="tab" data-tab="discovery" data-tip="View parsed OIDC/OAuth2 discovery endpoints, capabilities, and quick-load presets.">Discovery</button>
         </div>
 
         <div class="tab-content active" id="tab-inspector">
@@ -146,9 +146,9 @@
               <div id="replayResultBox" class="muted mono" style="display:none; font-size:11px;"></div>
 
               <div class="fuzzer-tabs" style="margin-top:4px;">
-                <button class="rep-subtab fuzzer-tab active" data-reptab="headers">Headers (JSON)</button>
-                <button class="rep-subtab fuzzer-tab" data-reptab="body">Body</button>
-                <button class="rep-subtab fuzzer-tab" data-reptab="response">Response <span id="repResTabBadge" class="badge badge-muted">-</span></button>
+                <button class="rep-subtab fuzzer-tab active" data-reptab="headers" data-tip="Edit outgoing request headers as JSON.">Headers (JSON)</button>
+                <button class="rep-subtab fuzzer-tab" data-reptab="body" data-tip="Edit outgoing request body (form-urlencoded or JSON).">Body</button>
+                <button class="rep-subtab fuzzer-tab" data-reptab="response" data-tip="Preview the latest response from Repeater Send.">Response <span id="repResTabBadge" class="badge badge-muted">-</span></button>
               </div>
 
               <div id="reptab-headers" class="rep-subpanel fuzzer-panel active">
@@ -166,10 +166,10 @@
             <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
             <div class="pane">
               <div class="fuzzer-tabs">
-                <button class="fuzzer-tab active" data-fuzzer="redirect">Redirect-URI (28)</button>
-                <button class="fuzzer-tab" data-fuzzer="params">Auth Params (9)</button>
-                <button class="fuzzer-tab" data-fuzzer="token">Token Endpoint (6)</button>
-                <button class="fuzzer-tab" data-fuzzer="custom">Custom Field</button>
+                <button class="fuzzer-tab active" data-fuzzer="redirect" data-tip="Test 28 redirect_uri bypass payloads.">Redirect-URI (28)</button>
+                <button class="fuzzer-tab" data-fuzzer="params" data-tip="Probe 9 common OAuth parameter misconfigurations (state, PKCE, Implicit, scope).">Auth Params (9)</button>
+                <button class="fuzzer-tab" data-fuzzer="token" data-tip="Probe 6 POST /token security checks (PKCE enforcement, redirect binding, code replay).">Token Endpoint (6)</button>
+                <button class="fuzzer-tab" data-fuzzer="custom" data-tip="Fuzz any query/body parameter with presets or custom wordlists using baseline diffing.">Custom Field</button>
               </div>
 
               <div id="fuzzer-redirect" class="fuzzer-panel active">
@@ -247,7 +247,7 @@
               <div class="pane-title">JWT Inspector</div>
               <div class="form-row">
                 <input id="manualJwtInput" class="input mono" type="text" placeholder="Paste raw JWT (eyJ...) to decode (or uses trace JWT)" />
-                <button id="inspectJwtBtn" class="btn btn-secondary">Decode</button>
+                <button id="inspectJwtBtn" class="btn btn-secondary" data-tip="Decode the pasted raw JWT header and payload.">Decode</button>
               </div>
               <div class="form-row">
                 <input id="jwksUriInput" class="input mono" type="text" placeholder="JWKS URI (auto-filled from Discovery, e.g. https://.../jwks.json)" />
@@ -282,7 +282,7 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
       <div class="modal-header">
         <span id="helpModalTitle">OAuth Workbench — Pentester Reference</span>
-        <button id="closeHelpBtn" class="btn btn-ghost">Close (Esc)</button>
+        <button id="closeHelpBtn" class="btn btn-ghost" data-tip="Close help modal (Esc).">Close (Esc)</button>
       </div>
       <div class="modal-body">
         <div class="help-grid">
@@ -325,6 +325,6 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
