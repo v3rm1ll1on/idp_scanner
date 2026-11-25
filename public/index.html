@@ -11,6 +11,7 @@
     <div class="brand">
       <span class="brand-title">OAuth Workbench</span>
       <span class="badge badge-muted">v0.1.0</span>
+      <span id="sseStatus" class="badge badge-muted">SSE: connecting</span>
     </div>
 
     <div class="topbar-controls">
@@ -64,14 +65,22 @@
         </div>
 
         <div class="tab-content active" id="tab-inspector">
+          <div class="inspector-toolbar">
+            <button id="copyCurlBtn" class="btn btn-secondary">Copy as cURL</button>
+            <button id="copyRawHttpBtn" class="btn btn-secondary">Copy Raw HTTP</button>
+            <button id="setBaselineBtn" class="btn btn-secondary">Set as Baseline</button>
+            <button id="clearBaselineBtn" class="btn btn-ghost">Clear Baseline</button>
+            <span id="copyFeedback" class="muted mono"></span>
+          </div>
+          <div id="diffBanner" class="diff-banner" style="display:none;"></div>
           <div class="split-2">
             <div class="pane">
               <div class="pane-title">Request</div>
               <pre id="reqSummary" class="code-block">No trace selected.</pre>
               <div class="pane-subtitle">OAuth Parameters</div>
-              <pre id="reqOAuthParams" class="code-block">{}</pre>
+              <div id="reqOAuthParams" class="kv-wrap"></div>
               <div class="pane-subtitle">Headers</div>
-              <pre id="reqHeaders" class="code-block">{}</pre>
+              <div id="reqHeaders" class="kv-wrap"></div>
               <div class="pane-subtitle">Body</div>
               <pre id="reqBody" class="code-block"></pre>
             </div>
@@ -79,9 +88,11 @@
               <div class="pane-title">Response <span id="resStatusBadge"></span></div>
               <pre id="resSummary" class="code-block">No trace selected.</pre>
               <div class="pane-subtitle">Response / Redirect OAuth Parameters</div>
-              <pre id="resOAuthParams" class="code-block">{}</pre>
+              <div id="resOAuthParams" class="kv-wrap"></div>
+              <div class="pane-subtitle">Cookies Set (Set-Cookie)</div>
+              <div id="resCookies" class="kv-wrap"></div>
               <div class="pane-subtitle">Headers</div>
-              <pre id="resHeaders" class="code-block">{}</pre>
+              <div id="resHeaders" class="kv-wrap"></div>
               <div class="pane-subtitle">Body</div>
               <pre id="resBody" class="code-block"></pre>
             </div>
@@ -102,11 +113,23 @@
                 <input id="repUrl" class="input mono" type="text" placeholder="https://auth.target.com/authorize?..." />
                 <button id="repSendBtn" class="btn btn-primary">Send</button>
               </div>
-              <label class="checkbox-inline">
-                <input id="repFollowRedirects" type="checkbox" /> Follow redirects (step-by-step trace)
-              </label>
+              <div class="form-row" style="gap:12px;">
+                <label class="checkbox-inline">
+                  <input id="repFollowRedirects" type="checkbox" /> Follow redirects (step-by-step trace)
+                </label>
+                <label class="checkbox-inline">
+                  <input id="repUseCookieJar" type="checkbox" checked /> Use Session Cookie Jar
+                </label>
+                <span id="cookieJarBadge" class="badge badge-muted">Cookies: 0</span>
+                <button id="clearCookiesBtn" class="btn btn-ghost" style="padding:3px 7px;">Clear Cookies</button>
+              </div>
 
-              <div class="pane-subtitle">Quick OAuth Parameter Mutations</div>
+              <div class="pane-subtitle">Quick OAuth Parameter Mutations &amp; Generators</div>
+              <div class="chip-row" style="margin-bottom:4px;">
+                <button id="genPkceBtn" class="chip">Gen PKCE (S256)</button>
+                <button id="genStateBtn" class="chip">Gen State &amp; Nonce</button>
+              </div>
+              <div id="pkceVerifierBox" class="muted mono" style="display:none; font-size:11px;"></div>
               <div id="paramMutationBtns" class="chip-row"></div>
 
               <div class="pane-subtitle">Headers (JSON)</div>

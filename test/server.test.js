@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { createApp } from '../src/server.js';
 import { RedirectUriMutationType } from '../src/oauth/payloads.js';
 
@@ -88,6 +89,107 @@ test('Discovery, full OAuth flow, and redirect_uri batch probe work end-to-end',
     });
     const openBatch = await openBatchRes.json();
     assert.equal(openBatch.results.every((r) => r.accepted === true), true);
+    assert.equal(openBatch.results.every((r) => r.verdict === 'ACCEPTED_WITH_CREDENTIAL'), true);
+  } finally {
+    server.close();
+  }
+});
+
+test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async () => {
+  const { server, baseUrl, mockIdp } = await startTestServer();
+  mockIdp.setConfig({ allowedRedirectPrefix: baseUrl, allowAlgNone: true });
+  try {
+    // 1. SSE stream receives live trace when /callback is hit
+    const controller = new AbortController();
+    const sseRes = await fetch(`${baseUrl}/api/traces/stream`, { signal: controller.signal });
+    assert.equal(sseRes.status, 200);
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+
+    // Read initial connected event
+    const firstChunk = await reader.read();
+    assert.ok(decoder.decode(firstChunk.value).includes('event: connected'));
+
+    // Trigger /callback
+    const cbRes = await fetch(`${baseUrl}/callback?code=live_cb_code&state=s1`);
+    assert.equal(cbRes.status, 200);
+
+    const secondChunk = await reader.read();
+    const sseText = decoder.decode(secondChunk.value);
+    assert.ok(sseText.includes('event: trace'));
+    assert.ok(sseText.includes('live_cb_code'));
+    controller.abort();
+
+    // 2. Fragment capture endpoint
+    const fragRes = await fetch(`${baseUrl}/api/callback-fragment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullUrl: `${baseUrl}/callback#access_token=frag_tok&state=s2` }),
+    });
+    const fragData = await fragRes.json();
+    assert.equal(fragData.captured, true);
+    assert.equal(fragData.oauthParams.access_token, 'frag_tok');
+
+    // 3. PKCE S256 positive & negative test + alg:none JWT output
+    const verifier = 'test_verifier_1234567890_abcdef';
+    const challenge = crypto
+      .createHash('sha256')
+      .update(verifier)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    const pkceAuthUrl = `${baseUrl}/mock-idp/authorize?client_id=pkce-client&redirect_uri=${encodeURIComponent(
+      `${baseUrl}/callback`
+    )}&response_type=code&code_challenge=${challenge}&code_challenge_method=S256&state=pkce1`;
+
+    const authHopRes = await fetch(`${baseUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'GET', url: pkceAuthUrl, followRedirects: false }),
+    });
+    const authHopData = await authHopRes.json();
+    const pkceCode = authHopData.hops[0].response.oauthParams.code;
+    assert.ok(pkceCode);
+
+    const tokenRes = await fetch(`${baseUrl}/mock-idp/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: pkceCode,
+        redirect_uri: `${baseUrl}/callback`,
+        client_id: 'pkce-client',
+        code_verifier: verifier,
+      }).toString(),
+    });
+    assert.equal(tokenRes.status, 200);
+    const tokenJson = await tokenRes.json();
+    const header = JSON.parse(Buffer.from(tokenJson.access_token.split('.')[0], 'base64url').toString('utf8'));
+    assert.equal(header.alg, 'none');
+
+    // 4. Cookie jar captures Set-Cookie on /mock-idp/authorize and forwards it on subsequent hops/requests
+    const jarSendRes = await fetch(`${baseUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: 'GET',
+        url: pkceAuthUrl,
+        followRedirects: true,
+        useCookieJar: true,
+      }),
+    });
+    const jarSendData = await jarSendRes.json();
+    assert.equal(jarSendData.hops.length, 2);
+    assert.equal(jarSendData.hops[0].response.cookies[0].name, 'mock_idp_session');
+    assert.ok(jarSendData.hops[1].request.headers.Cookie.includes('mock_idp_session=sess_demo_123'));
+    assert.equal(jarSendData.cookies.length, 1);
+
+    const clearCookiesRes = await fetch(`${baseUrl}/api/cookies`, { method: 'DELETE' });
+    assert.equal(clearCookiesRes.status, 200);
+    const afterClear = await (await fetch(`${baseUrl}/api/cookies`)).json();
+    assert.equal(afterClear.cookies.length, 0);
   } finally {
     server.close();
   }

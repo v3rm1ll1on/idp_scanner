@@ -1,10 +1,12 @@
 import { extractAndInspectJwts } from './jwt.js';
+import { parseSetCookieHeader } from './cookies.js';
 
 /**
  * Audits an OAuth/OIDC request or HTTP trace hop for security issues.
  * @param {object} context
  * @param {object} [context.oauthParams]
  * @param {object} [context.responseHeaders]
+ * @param {Array<object>} [context.cookies]
  * @param {number} [context.status]
  * @param {string} [context.location]
  * @param {string} [context.responseBody]
@@ -100,19 +102,39 @@ export function auditOAuthContext(context = {}) {
       });
     }
 
-    const setCookie = headers['set-cookie'];
-    if (setCookie) {
-      const cookieList = Array.isArray(setCookie) ? setCookie : [setCookie];
-      for (const c of cookieList) {
-        if (!/httponly/i.test(c) || !/samesite/i.test(c)) {
-          findings.push({
-            severity: 'LOW',
-            code: 'HTTP_WEAK_COOKIE_FLAGS',
-            title: 'Set-Cookie missing HttpOnly or SameSite attribute',
-            detail: `Cookie header: ${c.slice(0, 120)}`,
-          });
-          break;
-        }
+    const parsedCookies = Array.isArray(context.cookies)
+      ? context.cookies
+      : (() => {
+          const setCookie = headers['set-cookie'];
+          if (!setCookie) return [];
+          const list = Array.isArray(setCookie) ? setCookie : [setCookie];
+          return list.map(parseSetCookieHeader).filter(Boolean);
+        })();
+
+    for (const c of parsedCookies) {
+      if (!c.httpOnly || !c.sameSite) {
+        findings.push({
+          severity: 'LOW',
+          code: 'HTTP_WEAK_COOKIE_FLAGS',
+          title: `Cookie "${c.name}" missing HttpOnly or SameSite attribute`,
+          detail: `httpOnly=${c.httpOnly}, sameSite=${c.sameSite || 'none-set'}, secure=${c.secure}`,
+        });
+      }
+      if (c.sameSite && c.sameSite.toLowerCase() === 'none' && !c.secure) {
+        findings.push({
+          severity: 'MEDIUM',
+          code: 'HTTP_COOKIE_SAMESITE_NONE_INSECURE',
+          title: `Cookie "${c.name}" uses SameSite=None without Secure`,
+          detail: 'Browsers reject or downgrade SameSite=None cookies transmitted without the Secure flag.',
+        });
+      }
+      if (c.domain && c.domain.startsWith('.')) {
+        findings.push({
+          severity: 'INFO',
+          code: 'HTTP_COOKIE_BROAD_DOMAIN',
+          title: `Cookie "${c.name}" scoped to wildcard domain "${c.domain}"`,
+          detail: 'Subdomains can read or overwrite session/OAuth cookies scoped to a parent domain.',
+        });
       }
     }
   }

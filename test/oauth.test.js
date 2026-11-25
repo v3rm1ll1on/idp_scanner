@@ -4,6 +4,8 @@ import { parseOAuthUrl, parseRawHttpRequest } from '../src/oauth/parser.js';
 import { inspectJwt, encodeBase64Url } from '../src/oauth/jwt.js';
 import { RedirectUriMutationType, generateRedirectUriMutations } from '../src/oauth/payloads.js';
 import { auditOAuthContext } from '../src/oauth/analyzer.js';
+import { evaluateRedirectProbe } from '../src/tracer.js';
+import { parseSetCookieHeader, CookieJar } from '../src/oauth/cookies.js';
 
 test('parseOAuthUrl extracts query and fragment parameters', () => {
   const parsed = parseOAuthUrl(
@@ -67,4 +69,56 @@ test('auditOAuthContext flags implicit flow, missing state, and weak headers', (
   assert.ok(codes.includes('OAUTH_INSECURE_REDIRECT_SCHEME'));
   assert.ok(codes.includes('OAUTH_TOKEN_IN_REDIRECT'));
   assert.ok(codes.includes('HTTP_WEAK_COOKIE_FLAGS'));
+});
+
+test('evaluateRedirectProbe distinguishes credential redirect vs error redirect vs blocked', () => {
+  const cred = evaluateRedirectProbe({
+    status: 302,
+    location: 'https://app.example.com@evil.test/cb?code=123',
+    mutatedUri: 'https://app.example.com@evil.test/cb',
+    attackerHost: 'evil.test',
+  });
+  assert.equal(cred.accepted, true);
+  assert.equal(cred.verdict, 'ACCEPTED_WITH_CREDENTIAL');
+
+  const errRedirect = evaluateRedirectProbe({
+    status: 302,
+    location: 'https://evil.test/cb?error=invalid_request',
+    mutatedUri: 'https://evil.test/cb',
+    attackerHost: 'evil.test',
+  });
+  assert.equal(errRedirect.accepted, false);
+  assert.equal(errRedirect.verdict, 'REDIRECT_ERROR');
+
+  const blocked = evaluateRedirectProbe({
+    status: 400,
+    location: '',
+    mutatedUri: 'https://evil.test/cb',
+    attackerHost: 'evil.test',
+  });
+  assert.equal(blocked.accepted, false);
+  assert.equal(blocked.verdict, 'BLOCKED');
+});
+
+test('parseSetCookieHeader and CookieJar handle attributes, scoping, and expiry', () => {
+  const parsed = parseSetCookieHeader('sso_sid=xyz123; Domain=.example.com; Path=/; HttpOnly; SameSite=None');
+  assert.equal(parsed.name, 'sso_sid');
+  assert.equal(parsed.value, 'xyz123');
+  assert.equal(parsed.domain, '.example.com');
+  assert.equal(parsed.httpOnly, true);
+  assert.equal(parsed.sameSite, 'None');
+  assert.equal(parsed.secure, false);
+
+  const jar = new CookieJar();
+  jar.setFromHeaders('https://auth.example.com/authorize', [
+    'sso_sid=xyz123; Domain=.example.com; Path=/; HttpOnly; SameSite=Lax',
+    'host_only=abc; Path=/authorize',
+  ]);
+
+  assert.equal(jar.getCookieHeader('https://app.example.com/callback'), 'sso_sid=xyz123');
+  assert.equal(jar.getCookieHeader('https://auth.example.com/authorize'), 'sso_sid=xyz123; host_only=abc');
+  assert.equal(jar.getCookieHeader('https://unrelated.org/'), null);
+
+  jar.clear();
+  assert.equal(jar.list().length, 0);
 });

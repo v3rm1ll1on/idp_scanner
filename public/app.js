@@ -1,6 +1,7 @@
 const state = {
   traces: [],
   selectedTraceId: null,
+  baselineTraceId: null,
   redirectMutations: [],
   batchResults: new Map(),
 };
@@ -89,21 +90,90 @@ function renderTraceList() {
   });
 }
 
+function renderKvTable(el, obj) {
+  const entries = Object.entries(obj || {});
+  if (entries.length === 0) {
+    el.innerHTML = '<div class="muted" style="padding:6px 8px;">(none)</div>';
+    return;
+  }
+  el.innerHTML = `<table class="kv-table"><tbody>${entries
+    .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}</td></tr>`)
+    .join('')}</tbody></table>`;
+}
+
+function renderCookiesTable(el, cookies) {
+  if (!cookies || cookies.length === 0) {
+    el.innerHTML = '<div class="muted" style="padding:6px 8px;">(no Set-Cookie headers)</div>';
+    return;
+  }
+  el.innerHTML = `<table class="kv-table"><tbody>${cookies
+    .map((c) => {
+      const flags = [
+        c.httpOnly ? 'HttpOnly' : '!HttpOnly',
+        c.secure ? 'Secure' : '!Secure',
+        c.sameSite ? `SameSite=${c.sameSite}` : '!SameSite',
+        c.domain ? `Domain=${c.domain}` : '',
+        c.path ? `Path=${c.path}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      return `<tr><td>${escapeHtml(c.name)}</td><td><div>${escapeHtml(c.value)}</div><div class="muted">${escapeHtml(flags)}</div></td></tr>`;
+    })
+    .join('')}</tbody></table>`;
+}
+
+async function refreshCookieJarBadge() {
+  const data = await api('/api/cookies');
+  $('cookieJarBadge').textContent = `Cookies: ${(data.cookies || []).length}`;
+}
+
+function renderDiffBanner(trace) {
+  const banner = $('diffBanner');
+  if (!state.baselineTraceId || !trace) {
+    banner.style.display = 'none';
+    return;
+  }
+  const base = state.traces.find((t) => t.id === state.baselineTraceId);
+  if (!base) {
+    banner.style.display = 'none';
+    return;
+  }
+  if (base.id === trace.id) {
+    banner.style.display = 'flex';
+    banner.innerHTML = '<span><strong>Baseline active</strong> (select another trace to compare)</span>';
+    return;
+  }
+  const statusDelta = `${base.response.status} -> ${trace.response.status}`;
+  const lenBase = (base.response.body || '').length;
+  const lenCur = (trace.response.body || '').length;
+  const lenDelta = lenCur - lenBase;
+  const locChanged = (base.response.location || '') !== (trace.response.location || '');
+  banner.style.display = 'flex';
+  banner.innerHTML = `
+    <span><strong>Diff vs Baseline:</strong></span>
+    <span>Status: <strong>${escapeHtml(statusDelta)}</strong></span>
+    <span>Body Len: <strong>${lenBase} -> ${lenCur} (${lenDelta >= 0 ? '+' : ''}${lenDelta})</strong></span>
+    <span>Location: <strong>${locChanged ? 'CHANGED' : 'SAME'}</strong></span>
+  `;
+}
+
 function renderSelectedTrace() {
   const trace = state.traces.find((t) => t.id === state.selectedTraceId);
   if (!trace) return;
 
+  renderDiffBanner(trace);
   $('reqSummary').textContent = `${trace.request.method} ${trace.request.url}`;
-  $('reqOAuthParams').textContent = JSON.stringify(trace.request.oauthParams || {}, null, 2);
-  $('reqHeaders').textContent = JSON.stringify(trace.request.headers || {}, null, 2);
+  renderKvTable($('reqOAuthParams'), trace.request.oauthParams || {});
+  renderKvTable($('reqHeaders'), trace.request.headers || {});
   $('reqBody').textContent = trace.request.body || '(empty)';
 
   $('resStatusBadge').innerHTML = `<span class="badge ${statusBadgeClass(trace.response.status)}">${trace.response.status} ${escapeHtml(trace.response.statusText || '')}</span>`;
   $('resSummary').textContent = trace.response.location
     ? `HTTP ${trace.response.status} -> Location: ${trace.response.location}`
     : `HTTP ${trace.response.status} (${trace.durationMs}ms)`;
-  $('resOAuthParams').textContent = JSON.stringify(trace.response.oauthParams || {}, null, 2);
-  $('resHeaders').textContent = JSON.stringify(trace.response.headers || {}, null, 2);
+  renderKvTable($('resOAuthParams'), trace.response.oauthParams || {});
+  renderCookiesTable($('resCookies'), trace.response.cookies || []);
+  renderKvTable($('resHeaders'), trace.response.headers || {});
   $('resBody').textContent = formatBody(trace.response.body);
 
   // Sync into Repeater if URL is present
@@ -287,8 +357,9 @@ function renderRedirectMutations() {
   const rows = state.redirectMutations
     .map((m) => {
       const res = state.batchResults.get(m.id);
+      const badgeCls = !res ? '' : res.accepted ? 'badge-danger' : res.verdict === 'REDIRECT_ERROR' ? 'badge-warn' : 'badge-ok';
       const statusCell = res
-        ? `<span class="badge ${res.accepted ? 'badge-danger' : 'badge-ok'}">${res.accepted ? `ACCEPTED (${res.status})` : `BLOCKED (${res.status})`}</span>`
+        ? `<span class="badge ${badgeCls}">${escapeHtml(res.verdict || (res.accepted ? 'ACCEPTED' : 'BLOCKED'))} (${res.status})</span>`
         : '<span class="muted">-</span>';
       return `
         <tr>
@@ -476,13 +547,20 @@ $('repSendBtn').addEventListener('click', async () => {
       headers,
       body: $('repBody').value,
       followRedirects: $('repFollowRedirects').checked,
+      useCookieJar: $('repUseCookieJar').checked,
       label: 'repeater',
     }),
   });
   if (data.hops && data.hops.length > 0) {
     state.selectedTraceId = data.hops[0].id;
   }
+  await refreshCookieJarBadge();
   await loadTraces();
+});
+
+$('clearCookiesBtn').addEventListener('click', async () => {
+  await api('/api/cookies', { method: 'DELETE' });
+  await refreshCookieJarBadge();
 });
 
 $('refreshMutationsBtn').addEventListener('click', () => refreshRedirectMutations());
@@ -514,8 +592,127 @@ $('inspectJwtBtn').addEventListener('click', async () => {
   }
 });
 
+function toBase64Url(bytes) {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function randomToken(len = 32) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  return toBase64Url(bytes);
+}
+
+function showCopyFeedback(msg) {
+  $('copyFeedback').textContent = msg;
+  setTimeout(() => {
+    if ($('copyFeedback').textContent === msg) $('copyFeedback').textContent = '';
+  }, 2000);
+}
+
+$('copyCurlBtn').addEventListener('click', async () => {
+  const trace = state.traces.find((t) => t.id === state.selectedTraceId);
+  if (!trace) return;
+  const parts = [`curl -i -X ${trace.request.method}`];
+  for (const [k, v] of Object.entries(trace.request.headers || {})) {
+    parts.push(`-H ${JSON.stringify(`${k}: ${v}`)}`);
+  }
+  if (trace.request.body) {
+    parts.push(`--data-raw ${JSON.stringify(trace.request.body)}`);
+  }
+  parts.push(JSON.stringify(trace.request.url));
+  await navigator.clipboard.writeText(parts.join(' \\\n  '));
+  showCopyFeedback('Copied cURL');
+});
+
+$('copyRawHttpBtn').addEventListener('click', async () => {
+  const trace = state.traces.find((t) => t.id === state.selectedTraceId);
+  if (!trace) return;
+  const u = new URL(trace.request.url);
+  const lines = [`${trace.request.method} ${u.pathname}${u.search} HTTP/1.1`, `Host: ${u.host}`];
+  for (const [k, v] of Object.entries(trace.request.headers || {})) {
+    lines.push(`${k}: ${v}`);
+  }
+  lines.push('', trace.request.body || '');
+  await navigator.clipboard.writeText(lines.join('\r\n'));
+  showCopyFeedback('Copied Raw HTTP');
+});
+
+$('setBaselineBtn').addEventListener('click', () => {
+  if (!state.selectedTraceId) return;
+  state.baselineTraceId = state.selectedTraceId;
+  renderSelectedTrace();
+});
+
+$('clearBaselineBtn').addEventListener('click', () => {
+  state.baselineTraceId = null;
+  renderSelectedTrace();
+});
+
+$('genPkceBtn').addEventListener('click', async () => {
+  const verifier = randomToken(32);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = toBase64Url(new Uint8Array(digest));
+  try {
+    const u = new URL($('repUrl').value);
+    u.searchParams.set('code_challenge', challenge);
+    u.searchParams.set('code_challenge_method', 'S256');
+    $('repUrl').value = u.toString();
+  } catch {
+    // Ignore if URL not valid yet
+  }
+  $('pkceVerifierBox').style.display = 'block';
+  $('pkceVerifierBox').textContent = `code_verifier: ${verifier}`;
+});
+
+$('genStateBtn').addEventListener('click', () => {
+  try {
+    const u = new URL($('repUrl').value);
+    u.searchParams.set('state', randomToken(16));
+    u.searchParams.set('nonce', randomToken(16));
+    $('repUrl').value = u.toString();
+  } catch {
+    // Ignore
+  }
+});
+
+function connectTraceStream() {
+  const es = new EventSource('/api/traces/stream');
+  es.addEventListener('connected', () => {
+    $('sseStatus').textContent = 'SSE: live';
+    $('sseStatus').className = 'badge badge-ok';
+  });
+  es.addEventListener('trace', (ev) => {
+    try {
+      const entry = JSON.parse(ev.data);
+      if (!state.traces.some((t) => t.id === entry.id)) {
+        state.traces.unshift(entry);
+        if (!state.selectedTraceId) state.selectedTraceId = entry.id;
+        renderTraceList();
+        renderSequenceDiagram();
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  });
+  es.addEventListener('clear', () => {
+    state.traces = [];
+    state.selectedTraceId = null;
+    renderTraceList();
+    renderSequenceDiagram();
+  });
+  es.onerror = () => {
+    $('sseStatus').textContent = 'SSE: reconnecting';
+    $('sseStatus').className = 'badge badge-warn';
+  };
+}
+
 // Init
 loadMockConfig();
 loadParamMutations();
 refreshRedirectMutations('http://localhost:3000/callback');
+refreshCookieJarBadge();
 loadTraces();
+connectTraceStream();

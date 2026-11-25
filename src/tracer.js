@@ -1,14 +1,31 @@
 import crypto from 'node:crypto';
 import { parseOAuthUrl } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
+import { parseSetCookieHeader } from './oauth/cookies.js';
 
 /**
- * In-memory HTTP trace store and OAuth request/replay engine.
+ * In-memory HTTP trace store with pub/sub notifications for SSE streaming.
  */
 export class TraceStore {
   constructor(maxEntries = 200) {
     this.maxEntries = maxEntries;
     this.entries = [];
+    this.listeners = new Set();
+  }
+
+  subscribe(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  notify(event, payload) {
+    for (const fn of this.listeners) {
+      try {
+        fn(event, payload);
+      } catch {
+        // Ignore broken listener
+      }
+    }
   }
 
   add(entry) {
@@ -16,6 +33,7 @@ export class TraceStore {
     if (this.entries.length > this.maxEntries) {
       this.entries.shift();
     }
+    this.notify('trace', entry);
     return entry;
   }
 
@@ -25,7 +43,44 @@ export class TraceStore {
 
   clear() {
     this.entries = [];
+    this.notify('clear', {});
   }
+}
+
+/**
+ * Evaluates whether a redirect_uri probe was accepted by the authorization endpoint.
+ * @param {object} params
+ * @returns {{accepted: boolean, verdict: string, hasCredential: boolean, hasError: boolean}}
+ */
+export function evaluateRedirectProbe({ status, location, mutatedUri, attackerHost }) {
+  if (status < 300 || status >= 400 || !location) {
+    return { accepted: false, verdict: 'BLOCKED', hasCredential: false, hasError: false };
+  }
+
+  const hasCredential = /([?&#])(code|access_token|id_token)=/i.test(location);
+  const hasError = /([?&#])error=/i.test(location);
+
+  let pointsToAttacker = false;
+  if (attackerHost) {
+    const cleanAttacker = attackerHost.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+    try {
+      const locUrl = new URL(location);
+      pointsToAttacker = locUrl.hostname.toLowerCase().includes(cleanAttacker);
+    } catch {
+      pointsToAttacker = location.toLowerCase().includes(cleanAttacker);
+    }
+  }
+
+  const baseTarget = mutatedUri.split('?')[0].split('#')[0].toLowerCase();
+  const matchesMutatedBase = location.toLowerCase().startsWith(baseTarget);
+
+  if (hasCredential && !hasError && (pointsToAttacker || matchesMutatedBase)) {
+    return { accepted: true, verdict: 'ACCEPTED_WITH_CREDENTIAL', hasCredential, hasError };
+  }
+  if (!hasError && (pointsToAttacker || matchesMutatedBase)) {
+    return { accepted: true, verdict: 'ACCEPTED_REDIRECT', hasCredential, hasError };
+  }
+  return { accepted: false, verdict: hasError ? 'REDIRECT_ERROR' : 'BLOCKED', hasCredential, hasError };
 }
 
 /**
@@ -43,6 +98,7 @@ export async function sendAndTrace(store, options) {
     followRedirects = true,
     maxHops = 6,
     label = 'manual_request',
+    cookieJar = null,
   } = options;
 
   const hops = [];
@@ -61,11 +117,17 @@ export async function sendAndTrace(store, options) {
     }
 
     const reqHeaders = { ...headers };
-    // Remove hop-specific Host header so Node fetch sets it accurately
     delete reqHeaders.Host;
     delete reqHeaders.host;
     delete reqHeaders['Content-Length'];
     delete reqHeaders['content-length'];
+
+    if (cookieJar && !reqHeaders.Cookie && !reqHeaders.cookie) {
+      const jarHeader = cookieJar.getCookieHeader(currentUrl);
+      if (jarHeader) {
+        reqHeaders.Cookie = jarHeader;
+      }
+    }
 
     const fetchOptions = {
       method: currentMethod,
@@ -84,6 +146,20 @@ export async function sendAndTrace(store, options) {
       responseHeaders[key] = val;
     });
 
+    const rawSetCookies =
+      typeof res.headers.getSetCookie === 'function'
+        ? res.headers.getSetCookie()
+        : responseHeaders['set-cookie']
+          ? [responseHeaders['set-cookie']]
+          : [];
+    if (rawSetCookies.length > 0) {
+      responseHeaders['set-cookie'] = rawSetCookies.length === 1 ? rawSetCookies[0] : rawSetCookies;
+      if (cookieJar) {
+        cookieJar.setFromHeaders(currentUrl, rawSetCookies);
+      }
+    }
+    const parsedCookies = rawSetCookies.map(parseSetCookieHeader).filter(Boolean);
+
     const location = responseHeaders.location || null;
     let parsedLocation = null;
     if (location) {
@@ -101,6 +177,7 @@ export async function sendAndTrace(store, options) {
         ...(parsedLocation ? parsedLocation.oauthParams : {}),
       },
       responseHeaders,
+      cookies: parsedCookies,
       status: res.status,
       location: location ? new URL(location, currentUrl).toString() : null,
       responseBody: responseText,
@@ -125,6 +202,7 @@ export async function sendAndTrace(store, options) {
         status: res.status,
         statusText: res.statusText,
         headers: responseHeaders,
+        cookies: parsedCookies,
         location,
         body: responseText,
         oauthParams: parsedLocation?.oauthParams || {},
@@ -154,7 +232,7 @@ export async function sendAndTrace(store, options) {
  * @param {object} options
  * @returns {Promise<Array<object>>}
  */
-export async function batchTestRedirectUris(store, { baseUrl, headers = {}, mutations = [] }) {
+export async function batchTestRedirectUris(store, { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example' }) {
   const results = [];
 
   for (const mut of mutations) {
@@ -174,7 +252,12 @@ export async function batchTestRedirectUris(store, { baseUrl, headers = {}, muta
       const hop = hops[0];
       const status = hop.response.status;
       const location = hop.response.location || '';
-      const accepted = status >= 300 && status < 400 && location.includes(mut.uri.split('?')[0].split('#')[0]);
+      const evaluation = evaluateRedirectProbe({
+        status,
+        location,
+        mutatedUri: mut.uri,
+        attackerHost,
+      });
 
       results.push({
         id: mut.id,
@@ -183,7 +266,8 @@ export async function batchTestRedirectUris(store, { baseUrl, headers = {}, muta
         testedUri: mut.uri,
         status,
         location,
-        accepted,
+        accepted: evaluation.accepted,
+        verdict: evaluation.verdict,
         traceId: hop.id,
       });
     } catch (err) {
@@ -195,6 +279,7 @@ export async function batchTestRedirectUris(store, { baseUrl, headers = {}, muta
         status: 0,
         location: '',
         accepted: false,
+        verdict: 'ERROR',
         error: err.message,
       });
     }

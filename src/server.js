@@ -8,17 +8,19 @@ import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/
 import { auditOAuthContext } from './oauth/analyzer.js';
 import { generateRedirectUriMutations, getOAuthParameterMutations } from './oauth/payloads.js';
 import { inspectJwt } from './oauth/jwt.js';
+import { CookieJar } from './oauth/cookies.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Builds the Express application for OAuth Workbench.
- * @returns {{app: express.Express, store: TraceStore, mockIdp: object}}
+ * @returns {{app: express.Express, store: TraceStore, mockIdp: object, cookieJar: CookieJar}}
  */
 export function createApp() {
   const app = express();
   const store = new TraceStore();
   const mockIdp = createMockIdp();
+  const cookieJar = new CookieJar();
 
   app.use(express.json({ limit: '2mb' }));
   app.use('/mock-idp', mockIdp.router);
@@ -30,6 +32,26 @@ export function createApp() {
 
   app.get('/api/traces', (_req, res) => {
     res.json({ traces: store.list() });
+  });
+
+  app.get('/api/traces/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const sendEvent = (event, data) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    sendEvent('connected', { ok: true });
+    const unsubscribe = store.subscribe((event, payload) => {
+      sendEvent(event, payload);
+    });
+
+    req.on('close', () => {
+      unsubscribe();
+    });
   });
 
   app.delete('/api/traces', (_req, res) => {
@@ -104,8 +126,25 @@ export function createApp() {
     return res.status(404).json({ error: 'No OIDC/OAuth2 discovery document found at well-known endpoints' });
   });
 
+  app.get('/api/cookies', (_req, res) => {
+    res.json({ cookies: cookieJar.list() });
+  });
+
+  app.delete('/api/cookies', (_req, res) => {
+    cookieJar.clear();
+    res.json({ cleared: true });
+  });
+
   app.post('/api/send', async (req, res) => {
-    const { method = 'GET', url, headers = {}, body = '', followRedirects = false, label = 'repeater' } = req.body || {};
+    const {
+      method = 'GET',
+      url,
+      headers = {},
+      body = '',
+      followRedirects = false,
+      useCookieJar = false,
+      label = 'repeater',
+    } = req.body || {};
     if (!url) {
       return res.status(400).json({ error: 'Missing url' });
     }
@@ -116,9 +155,10 @@ export function createApp() {
         headers,
         body,
         followRedirects: Boolean(followRedirects),
+        cookieJar: useCookieJar ? cookieJar : null,
         label,
       });
-      return res.json({ hops });
+      return res.json({ hops, cookies: cookieJar.list() });
     } catch (err) {
       return res.status(502).json({ error: err.message });
     }
@@ -142,7 +182,7 @@ export function createApp() {
         const allow = new Set(mutationIds);
         mutations = mutations.filter((m) => allow.has(m.id));
       }
-      const results = await batchTestRedirectUris(store, { baseUrl, headers, mutations });
+      const results = await batchTestRedirectUris(store, { baseUrl, headers, mutations, attackerHost });
       return res.json({ results });
     } catch (err) {
       return res.status(400).json({ error: err.message });
@@ -245,7 +285,7 @@ export function createApp() {
     }
   });
 
-  return { app, store, mockIdp };
+  return { app, store, mockIdp, cookieJar };
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
