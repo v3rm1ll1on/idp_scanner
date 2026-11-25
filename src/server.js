@@ -361,7 +361,43 @@ export function createApp() {
     }
   });
 
-  // Local OAuth callback listener (supports both query params and #fragment capture)
+  // Local OAuth callback listener (supports GET query, #fragment, and POST form_post)
+  app.post('/callback', express.urlencoded({ extended: false }), (req, res) => {
+    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const bodyParams = req.body && typeof req.body === 'object' ? req.body : {};
+    const parsed = parseOAuthUrl(fullUrl);
+    const mergedParams = { ...parsed.oauthParams, ...bodyParams };
+    const audit = auditOAuthContext({ oauthParams: mergedParams, status: 200 });
+
+    store.add({
+      id: crypto.randomUUID(),
+      traceGroupId: crypto.randomUUID(),
+      hopIndex: 0,
+      timestamp: new Date().toISOString(),
+      label: 'local_callback_form_post',
+      flowKind: bodyParams.id_token || bodyParams.access_token ? 'form_post_token_callback' : 'form_post_callback',
+      durationMs: 0,
+      request: {
+        method: 'POST',
+        url: fullUrl,
+        headers: req.headers,
+        body: new URLSearchParams(bodyParams).toString(),
+        oauthParams: mergedParams,
+      },
+      response: {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'text/html' },
+        location: null,
+        body: '',
+        oauthParams: mergedParams,
+      },
+      audit,
+    });
+
+    res.type('html').send('<!doctype html><html><body style="font-family:monospace;background:#0f172a;color:#e2e8f0;padding:24px;"><h2>OAuth form_post Callback Captured</h2><p>Logged to OAuth Workbench.</p></body></html>');
+  });
+
   app.get('/callback', (req, res) => {
     const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const parsed = parseOAuthUrl(fullUrl);

@@ -314,6 +314,16 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     assert.equal(tokBatchRes.status, 200);
     const tokBatch = await tokBatchRes.json();
     assert.equal(tokBatch.results.every((r) => r.accepted === false && r.verdict === 'BLOCKED'), true);
+
+    // 10. POST /callback (response_mode=form_post) capture
+    const formPostRes = await fetch(`${baseUrl}/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code: 'form_post_code_1', state: 'fp_state' }).toString(),
+    });
+    assert.equal(formPostRes.status, 200);
+    const tracesAfterPost = await (await fetch(`${baseUrl}/api/traces`)).json();
+    assert.equal(tracesAfterPost.traces[0].request.oauthParams.code, 'form_post_code_1');
   } finally {
     server.close();
   }

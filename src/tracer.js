@@ -409,16 +409,21 @@ export async function batchTestCustomField(
     cookieJar = null,
   }
 ) {
-  const baselineHops = await sendAndTrace(store, {
-    method,
-    url: baseUrl,
-    headers,
-    body,
-    followRedirects: false,
-    maxHops: 1,
-    cookieJar,
-    label: `custom_baseline:${paramName}`,
-  });
+  let baselineHops;
+  try {
+    baselineHops = await sendAndTrace(store, {
+      method,
+      url: baseUrl,
+      headers,
+      body,
+      followRedirects: false,
+      maxHops: 1,
+      cookieJar,
+      label: `custom_baseline:${paramName}`,
+    });
+  } catch (err) {
+    throw new Error(`Baseline request failed: ${err.message}`);
+  }
 
   const baseHop = baselineHops[0];
   const baseStatus = baseHop.response.status;

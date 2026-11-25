@@ -251,7 +251,21 @@ function renderDiffBanner(trace) {
 
 function renderSelectedTrace() {
   const trace = state.traces.find((t) => t.id === state.selectedTraceId);
-  if (!trace) return;
+  if (!trace) {
+    $('diffBanner').style.display = 'none';
+    $('reqSummary').textContent = 'No trace selected.';
+    renderKvTable($('reqOAuthParams'), {});
+    renderKvTable($('reqHeaders'), {});
+    $('reqBody').textContent = '';
+    $('resStatusBadge').innerHTML = '';
+    $('resSummary').textContent = 'No trace selected.';
+    renderKvTable($('resOAuthParams'), {});
+    renderCookiesTable($('resCookies'), []);
+    renderKvTable($('resHeaders'), {});
+    $('resBody').textContent = '';
+    renderAudit(null);
+    return;
+  }
 
   renderDiffBanner(trace);
   $('reqSummary').textContent = `${trace.request.method} ${trace.request.url}`;
@@ -404,9 +418,10 @@ function renderSequenceDiagram() {
     const x1 = colX[fromIdx];
     const x2 = colX[toIdx];
     const midX = (x1 + x2) / 2;
-    const path = (() => {
+    const rawPath = (() => {
       try { return new URL(url).pathname; } catch { return url; }
     })();
+    const path = rawPath.length > 28 ? `${rawPath.slice(0, 25)}...` : rawPath;
     const isSelected = t.id === state.selectedTraceId;
     const stroke = isSelected ? '#38bdf8' : '#64748b';
     const textColor = isSelected ? '#f8fafc' : '#94a3b8';
@@ -839,7 +854,16 @@ $('demoFlowBtn').addEventListener('click', async () => {
 $('clearTracesBtn').addEventListener('click', async () => {
   await api('/api/traces', { method: 'DELETE' });
   state.selectedTraceId = null;
+  state.baselineTraceId = null;
+  state.expandedTraces.clear();
   state.batchResults.clear();
+  state.paramBatchResults.clear();
+  state.tokenBatchResults.clear();
+  state.customBatchData = null;
+  renderRedirectMutations();
+  renderParamFuzzerTable();
+  renderTokenFuzzerTable();
+  renderCustomFuzzerTable();
   await loadTraces();
 });
 
