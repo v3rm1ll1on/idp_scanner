@@ -35,6 +35,7 @@
         <summary class="panel-header clickable" data-tip="Toggle intentional vulnerabilities on the local /mock-idp sandbox.">Mock IdP Security Toggles</summary>
         <div class="mock-toggles" id="mockToggles">
           <label data-tip="Accept any redirect_uri (enables open redirect bypasses)."><input type="checkbox" data-key="allowOpenRedirect" /> allowOpenRedirect</label>
+          <label data-tip="Use naive startsWith() validation on redirect_uri (allows suffix, path traversal, query, and matrix bypasses)."><input type="checkbox" data-key="weakPrefixRedirect" /> weakPrefixRedirect</label>
           <label data-tip="Permit authorization requests without a state parameter (CSRF)."><input type="checkbox" data-key="allowMissingState" /> allowMissingState</label>
           <label data-tip="Allow response_type=token / id_token (Implicit/Hybrid downgrade)."><input type="checkbox" data-key="allowImplicitDowngrade" /> allowImplicitDowngrade</label>
           <label data-tip="Allow PKCE code_challenge_method=plain instead of enforcing S256."><input type="checkbox" data-key="allowPkceDowngrade" /> allowPkceDowngrade</label>

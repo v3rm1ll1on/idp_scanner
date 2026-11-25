@@ -74,7 +74,7 @@ export function evaluateRedirectProbe({ status, location, mutatedUri, attackerHo
   const baseTarget = mutatedUri.split('?')[0].split('#')[0].toLowerCase();
   const matchesMutatedBase = location.toLowerCase().startsWith(baseTarget);
 
-  if (hasCredential && !hasError && (pointsToAttacker || matchesMutatedBase)) {
+  if (hasCredential && !hasError) {
     return { accepted: true, verdict: 'ACCEPTED_WITH_CREDENTIAL', hasCredential, hasError };
   }
   if (!hasError && (pointsToAttacker || matchesMutatedBase)) {

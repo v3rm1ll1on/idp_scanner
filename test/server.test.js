@@ -64,6 +64,7 @@ test('Discovery, full OAuth flow, and redirect_uri batch probe work end-to-end',
     assert.ok(tokenData.hops[0].audit.jwts.length >= 2);
 
     // 4. Redirect-URI batch probe (strict mode -> external redirect blocked)
+    mockIdp.setConfig({ weakPrefixRedirect: false, allowOpenRedirect: false });
     const strictBatchRes = await fetch(`${baseUrl}/api/mutations/redirect-uri/batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,6 +76,24 @@ test('Discovery, full OAuth flow, and redirect_uri batch probe work end-to-end',
     });
     const strictBatch = await strictBatchRes.json();
     assert.equal(strictBatch.results.every((r) => r.accepted === false), true);
+
+    // 4b. weakPrefixRedirect -> path traversal passes, external authority @ fails
+    mockIdp.setConfig({ weakPrefixRedirect: true, allowOpenRedirect: false });
+    const weakBatchRes = await fetch(`${baseUrl}/api/mutations/redirect-uri/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: authUrl,
+        attackerHost: 'evil.example',
+        mutationIds: [
+          RedirectUriMutationType.PATH_TRAVERSAL_DOTDOT,
+          RedirectUriMutationType.WHITELIST_SUBSTRING_PATH,
+        ],
+      }),
+    });
+    const weakBatch = await weakBatchRes.json();
+    assert.equal(weakBatch.results.find((r) => r.id === RedirectUriMutationType.PATH_TRAVERSAL_DOTDOT).accepted, true);
+    assert.equal(weakBatch.results.find((r) => r.id === RedirectUriMutationType.WHITELIST_SUBSTRING_PATH).accepted, false);
 
     // 5. Toggle allowOpenRedirect -> external redirect accepted
     mockIdp.setConfig({ allowOpenRedirect: true });

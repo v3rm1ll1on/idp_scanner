@@ -14,6 +14,7 @@ export function createMockIdp(initialConfig = {}) {
 
   const config = {
     allowOpenRedirect: false,
+    weakPrefixRedirect: true,
     allowMissingState: true,
     allowImplicitDowngrade: true,
     allowPkceDowngrade: true,
@@ -52,6 +53,13 @@ export function createMockIdp(initialConfig = {}) {
   function isRedirectAllowed(redirectUri) {
     if (!redirectUri) return false;
     if (config.allowOpenRedirect) return true;
+    if (config.weakPrefixRedirect) {
+      const uriStr = String(redirectUri);
+      if (config.allowedRedirectPrefix === 'http://localhost:') {
+        return uriStr.startsWith('http://localhost') || uriStr.startsWith('http://127.0.0.1');
+      }
+      return uriStr.startsWith(config.allowedRedirectPrefix);
+    }
     try {
       const parsed = new URL(redirectUri);
       const allowed = new URL(
