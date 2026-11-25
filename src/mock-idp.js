@@ -59,7 +59,11 @@ export function createMockIdp(initialConfig = {}) {
           ? `${config.allowedRedirectPrefix}3000`
           : config.allowedRedirectPrefix
       );
-      return parsed.protocol === allowed.protocol && parsed.hostname === allowed.hostname;
+      if (parsed.protocol !== allowed.protocol) return false;
+      if (config.allowedRedirectPrefix === 'http://localhost:') {
+        return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      }
+      return parsed.hostname === allowed.hostname;
     } catch {
       return false;
     }

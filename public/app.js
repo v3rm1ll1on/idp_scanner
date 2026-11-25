@@ -456,6 +456,7 @@ $('discoverBtn').addEventListener('click', async () => {
   if (!issuerUrl) return;
   const data = await api('/api/discover', { method: 'POST', body: JSON.stringify({ issuerUrl }) });
   $('discoveryOutput').textContent = JSON.stringify(data, null, 2);
+  document.querySelector('[data-tab="discovery"]').click();
   await loadTraces();
 });
 
@@ -659,6 +660,26 @@ function showCopyFeedback(msg) {
   }, 2000);
 }
 
+async function copyToClipboard(text, label) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      throw new Error('Clipboard API unavailable');
+    }
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  showCopyFeedback(label);
+}
+
 $('copyCurlBtn').addEventListener('click', async () => {
   const trace = state.traces.find((t) => t.id === state.selectedTraceId);
   if (!trace) return;
@@ -670,21 +691,28 @@ $('copyCurlBtn').addEventListener('click', async () => {
     parts.push(`--data-raw ${JSON.stringify(trace.request.body)}`);
   }
   parts.push(JSON.stringify(trace.request.url));
-  await navigator.clipboard.writeText(parts.join(' \\\n  '));
-  showCopyFeedback('Copied cURL');
+  await copyToClipboard(parts.join(' \\\n  '), 'Copied cURL');
 });
 
 $('copyRawHttpBtn').addEventListener('click', async () => {
   const trace = state.traces.find((t) => t.id === state.selectedTraceId);
   if (!trace) return;
-  const u = new URL(trace.request.url);
-  const lines = [`${trace.request.method} ${u.pathname}${u.search} HTTP/1.1`, `Host: ${u.host}`];
+  let pathPart = trace.request.url;
+  let hostPart = '';
+  try {
+    const u = new URL(trace.request.url);
+    pathPart = `${u.pathname}${u.search}`;
+    hostPart = u.host;
+  } catch {
+    // Fallback to raw URL
+  }
+  const lines = [`${trace.request.method} ${pathPart} HTTP/1.1`];
+  if (hostPart) lines.push(`Host: ${hostPart}`);
   for (const [k, v] of Object.entries(trace.request.headers || {})) {
     lines.push(`${k}: ${v}`);
   }
   lines.push('', trace.request.body || '');
-  await navigator.clipboard.writeText(lines.join('\r\n'));
-  showCopyFeedback('Copied Raw HTTP');
+  await copyToClipboard(lines.join('\r\n'), 'Copied Raw HTTP');
 });
 
 $('setBaselineBtn').addEventListener('click', () => {
