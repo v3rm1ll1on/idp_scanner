@@ -108,7 +108,7 @@ export function createMockIdp(initialConfig = {}) {
   router.get('/authorize', (req, res) => {
     const {
       client_id,
-      redirect_uri,
+      redirect_uri: rawRedirectUri,
       response_type = 'code',
       scope = 'openid profile',
       state,
@@ -116,6 +116,10 @@ export function createMockIdp(initialConfig = {}) {
       code_challenge,
       code_challenge_method,
     } = req.query;
+
+    const redirect_uri = Array.isArray(rawRedirectUri)
+      ? rawRedirectUri[rawRedirectUri.length - 1]
+      : rawRedirectUri;
 
     if (!client_id) {
       return res.status(400).json({ error: 'invalid_request', error_description: 'Missing client_id' });
@@ -125,6 +129,16 @@ export function createMockIdp(initialConfig = {}) {
       return res.status(400).json({
         error: 'invalid_redirect_uri',
         error_description: `redirect_uri "${redirect_uri || ''}" is not permitted`,
+      });
+    }
+
+    let target;
+    try {
+      target = new URL(redirect_uri);
+    } catch {
+      return res.status(400).json({
+        error: 'invalid_redirect_uri',
+        error_description: `Malformed redirect_uri "${redirect_uri || ''}"`,
       });
     }
 
@@ -149,8 +163,6 @@ export function createMockIdp(initialConfig = {}) {
 
     // Simulate authenticated session cookie (intentionally weak flags if testing)
     res.setHeader('Set-Cookie', 'mock_idp_session=sess_demo_123; Path=/');
-
-    const target = new URL(redirect_uri);
 
     if (rtParts.includes('token') || rtParts.includes('id_token')) {
       const now = Math.floor(Date.now() / 1000);

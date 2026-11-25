@@ -210,6 +210,20 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
       }).toString(),
     });
     assert.equal(noVerifierRes.status, 400);
+
+    // 6. Malformed & HPP array redirect_uri handling in Mock IdP (no 500 crash)
+    mockIdp.setConfig({ allowOpenRedirect: true });
+    const badRedirectRes = await fetch(
+      `${baseUrl}/mock-idp/authorize?client_id=c1&redirect_uri=not-a-valid-url&state=s1`
+    );
+    assert.equal(badRedirectRes.status, 400);
+
+    const hppRes = await fetch(
+      `${baseUrl}/mock-idp/authorize?client_id=c1&redirect_uri=${encodeURIComponent(`${baseUrl}/callback`)}&redirect_uri=${encodeURIComponent('https://evil.example/cb')}&state=s1`,
+      { redirect: 'manual' }
+    );
+    assert.equal(hppRes.status, 302);
+    assert.ok(hppRes.headers.get('location').startsWith('https://evil.example/cb'));
   } finally {
     server.close();
   }

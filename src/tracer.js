@@ -161,12 +161,14 @@ export async function sendAndTrace(store, options) {
     const parsedCookies = rawSetCookies.map(parseSetCookieHeader).filter(Boolean);
 
     const location = responseHeaders.location || null;
+    let resolvedLocation = null;
     let parsedLocation = null;
     if (location) {
       try {
-        const resolved = new URL(location, currentUrl).toString();
-        parsedLocation = parseOAuthUrl(resolved);
+        resolvedLocation = new URL(location, currentUrl).toString();
+        parsedLocation = parseOAuthUrl(resolvedLocation);
       } catch {
+        resolvedLocation = null;
         parsedLocation = null;
       }
     }
@@ -179,7 +181,7 @@ export async function sendAndTrace(store, options) {
       responseHeaders,
       cookies: parsedCookies,
       status: res.status,
-      location: location ? new URL(location, currentUrl).toString() : null,
+      location: resolvedLocation || location,
       responseBody: responseText,
     });
 
@@ -212,11 +214,11 @@ export async function sendAndTrace(store, options) {
 
     hops.push(entry);
 
-    if (!followRedirects || !location || res.status < 300 || res.status >= 400) {
+    if (!followRedirects || !resolvedLocation || !/^https?:\/\//i.test(resolvedLocation) || res.status < 300 || res.status >= 400) {
       break;
     }
 
-    currentUrl = new URL(location, currentUrl).toString();
+    currentUrl = resolvedLocation;
     if (res.status === 301 || res.status === 302 || res.status === 303) {
       currentMethod = 'GET';
       currentBody = undefined;
