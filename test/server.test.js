@@ -269,6 +269,31 @@ test('PKCE S256, alg:none toggle, fragment capture, and SSE stream work', async 
     });
     const strictParamBatch = await strictParamRes.json();
     assert.equal(strictParamBatch.results.every((r) => r.accepted === false && r.verdict === 'BLOCKED'), true);
+
+    // 8. Custom Field Fuzzer presets & batch anomaly detection
+    const presetsRes = await fetch(`${baseUrl}/api/mutations/custom-presets`);
+    assert.equal(presetsRes.status, 200);
+    const presetsJson = await presetsRes.json();
+    assert.ok(presetsJson.presets.length >= 3);
+
+    const customBatchRes = await fetch(`${baseUrl}/api/mutations/custom/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: 'GET',
+        baseUrl: pkceAuthUrl,
+        targetLocation: 'query',
+        paramName: 'client_id',
+        payloads: ['pkce-client', ''],
+      }),
+    });
+    assert.equal(customBatchRes.status, 200);
+    const customBatch = await customBatchRes.json();
+    assert.equal(customBatch.baseline.status, 302);
+    assert.equal(customBatch.results[0].status, 302);
+    assert.equal(customBatch.results[1].status, 400);
+    assert.equal(customBatch.results[1].anomaly, true);
+    assert.equal(customBatch.results[1].verdict, 'ANOMALY');
   } finally {
     server.close();
   }

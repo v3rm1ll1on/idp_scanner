@@ -3,10 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createMockIdp } from './mock-idp.js';
-import { TraceStore, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams } from './tracer.js';
+import { TraceStore, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField } from './tracer.js';
 import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
-import { generateRedirectUriMutations, getOAuthParameterMutations } from './oauth/payloads.js';
+import { generateRedirectUriMutations, getOAuthParameterMutations, getCustomFieldPresets } from './oauth/payloads.js';
 import { inspectJwt } from './oauth/jwt.js';
 import { CookieJar } from './oauth/cookies.js';
 
@@ -201,6 +201,44 @@ export function createApp() {
     }
   });
 
+  app.get('/api/mutations/custom-presets', (_req, res) => {
+    res.json({ presets: getCustomFieldPresets() });
+  });
+
+  app.post('/api/mutations/custom/batch', async (req, res) => {
+    const {
+      method = 'GET',
+      baseUrl,
+      headers = {},
+      body = '',
+      targetLocation = 'query',
+      paramName,
+      payloads = [],
+      useCookieJar = true,
+    } = req.body || {};
+
+    if (!baseUrl || !paramName || !Array.isArray(payloads) || payloads.length === 0) {
+      return res.status(400).json({ error: 'baseUrl, paramName, and non-empty payloads array are required' });
+    }
+
+    try {
+      new URL(baseUrl);
+      const data = await batchTestCustomField(store, {
+        method,
+        baseUrl,
+        headers,
+        body,
+        targetLocation,
+        paramName,
+        payloads: payloads.slice(0, 50),
+        cookieJar: useCookieJar ? cookieJar : null,
+      });
+      return res.json(data);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
   app.post('/api/mutations/params/batch', async (req, res) => {
     const { baseUrl, headers = {}, mutationIds, useCookieJar = true } = req.body || {};
     if (!baseUrl) {
@@ -220,6 +258,44 @@ export function createApp() {
         cookieJar: useCookieJar ? cookieJar : null,
       });
       return res.json({ results });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/mutations/custom-presets', (_req, res) => {
+    res.json({ presets: getCustomFieldPresets() });
+  });
+
+  app.post('/api/mutations/custom/batch', async (req, res) => {
+    const {
+      method = 'GET',
+      baseUrl,
+      headers = {},
+      body = '',
+      targetLocation = 'query',
+      paramName,
+      payloads = [],
+      useCookieJar = true,
+    } = req.body || {};
+
+    if (!baseUrl || !paramName || !Array.isArray(payloads) || payloads.length === 0) {
+      return res.status(400).json({ error: 'baseUrl, paramName, and non-empty payloads array are required' });
+    }
+
+    try {
+      new URL(baseUrl);
+      const data = await batchTestCustomField(store, {
+        method,
+        baseUrl,
+        headers,
+        body,
+        targetLocation,
+        paramName,
+        payloads: payloads.slice(0, 50),
+        cookieJar: useCookieJar ? cookieJar : null,
+      });
+      return res.json(data);
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }

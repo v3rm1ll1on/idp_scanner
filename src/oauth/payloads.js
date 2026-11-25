@@ -315,3 +315,27 @@ export function getOAuthParameterMutations() {
     },
   ];
 }
+
+/**
+ * Built-in payload presets for fuzzing arbitrary custom OAuth/IdP parameters.
+ * @returns {Array<{id: string, label: string, payloads: Array<string>}>}
+ */
+export function getCustomFieldPresets() {
+  return [
+    {
+      id: 'IDOR_ROLE_TENANT',
+      label: 'IDOR / Tenant / Role',
+      payloads: ['0', '1', '2', 'admin', 'internal', 'master', 'default', '*'],
+    },
+    {
+      id: 'REDIRECT_SSRF',
+      label: 'Redirect / SSRF',
+      payloads: ['https://attacker.example', '//attacker.example', 'http://127.0.0.1', 'http://169.254.169.254'],
+    },
+    {
+      id: 'EDGE_TYPES',
+      label: 'Edge / Type Confusion',
+      payloads: ['', 'null', 'true', 'false', '../', "'"],
+    },
+  ];
+}

@@ -387,3 +387,112 @@ export async function batchTestOAuthParams(
 
   return results;
 }
+
+/**
+ * Fuzzes a single query or body parameter against a baseline response to detect status/location/length anomalies.
+ * @param {TraceStore} store
+ * @param {object} options
+ * @returns {Promise<{baseline: object, results: Array<object>}>}
+ */
+export async function batchTestCustomField(
+  store,
+  {
+    method = 'GET',
+    baseUrl,
+    headers = {},
+    body = '',
+    targetLocation = 'query',
+    paramName,
+    payloads = [],
+    cookieJar = null,
+  }
+) {
+  const baselineHops = await sendAndTrace(store, {
+    method,
+    url: baseUrl,
+    headers,
+    body,
+    followRedirects: false,
+    maxHops: 1,
+    cookieJar,
+    label: `custom_baseline:${paramName}`,
+  });
+
+  const baseHop = baselineHops[0];
+  const baseStatus = baseHop.response.status;
+  const baseLocation = baseHop.response.location || '';
+  const baseLen = (baseHop.response.body || '').length;
+
+  const results = [];
+  for (const payload of payloads) {
+    let reqUrl = baseUrl;
+    let reqBody = body;
+
+    if (targetLocation === 'body') {
+      const ct = (headers['Content-Type'] || headers['content-type'] || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        try {
+          const obj = JSON.parse(body || '{}');
+          obj[paramName] = payload;
+          reqBody = JSON.stringify(obj);
+        } catch {
+          reqBody = body;
+        }
+      } else {
+        const params = new URLSearchParams(body || '');
+        params.set(paramName, payload);
+        reqBody = params.toString();
+      }
+    } else {
+      const u = new URL(baseUrl);
+      u.searchParams.set(paramName, payload);
+      reqUrl = u.toString();
+    }
+
+    try {
+      const hops = await sendAndTrace(store, {
+        method,
+        url: reqUrl,
+        headers,
+        body: reqBody,
+        followRedirects: false,
+        maxHops: 1,
+        cookieJar,
+        label: `custom_probe:${paramName}`,
+      });
+      const hop = hops[0];
+      const status = hop.response.status;
+      const location = hop.response.location || '';
+      const bodyLen = (hop.response.body || '').length;
+      const lenDelta = bodyLen - baseLen;
+      const anomaly = status !== baseStatus || location !== baseLocation || lenDelta !== 0;
+
+      results.push({
+        payload,
+        status,
+        location,
+        bodyLen,
+        lenDelta,
+        anomaly,
+        verdict: anomaly ? 'ANOMALY' : 'SAME',
+        traceId: hop.id,
+      });
+    } catch (err) {
+      results.push({
+        payload,
+        status: 0,
+        location: '',
+        bodyLen: 0,
+        lenDelta: 0,
+        anomaly: true,
+        verdict: 'ERROR',
+        error: err.message,
+      });
+    }
+  }
+
+  return {
+    baseline: { status: baseStatus, location: baseLocation, bodyLen: baseLen },
+    results,
+  };
+}

@@ -168,6 +168,7 @@
               <div class="fuzzer-tabs">
                 <button class="fuzzer-tab active" data-fuzzer="redirect">Redirect-URI Fuzzer (28)</button>
                 <button class="fuzzer-tab" data-fuzzer="params">OAuth Param Fuzzer (9)</button>
+                <button class="fuzzer-tab" data-fuzzer="custom">Custom Field Fuzzer</button>
               </div>
 
               <div id="fuzzer-redirect" class="fuzzer-panel active">
@@ -193,6 +194,31 @@
                   <label class="checkbox-inline" style="font-size:11px;"><input id="paramOnlyAccepted" type="checkbox" /> Only Accepted</label>
                 </div>
                 <div id="paramFuzzerList" class="mutation-table-wrap"></div>
+              </div>
+
+              <div id="fuzzer-custom" class="fuzzer-panel">
+                <div class="form-row">
+                  <select id="customParamSelect" class="input mono" style="width:170px;" data-tip="Pick a detected parameter from the Repeater or choose Custom.">
+                    <option value="">-- Custom --</option>
+                  </select>
+                  <select id="customTargetLoc" class="input mono" style="width:90px;" data-tip="Where to inject the payload (URL query or request body).">
+                    <option value="query">query</option>
+                    <option value="body">body</option>
+                  </select>
+                  <input id="customParamInput" class="input mono" type="text" placeholder="param name (e.g. tenant_id, role)" />
+                </div>
+                <div class="form-row">
+                  <select id="customPresetSelect" class="input mono" style="flex:1;" data-tip="Load a built-in payload list.">
+                    <option value="">Load Payload Preset...</option>
+                  </select>
+                  <button id="batchCustomBtn" class="btn btn-danger" data-tip="Run baseline + all payloads against the selected parameter and flag status/location/length anomalies.">Run Custom Fuzzer</button>
+                </div>
+                <textarea id="customPayloadsInput" class="input mono code-edit" rows="4" placeholder="One payload per line..."></textarea>
+                <div class="form-row" style="justify-content:space-between;">
+                  <span id="customFuzzerSummary" class="muted mono">Select a parameter and payloads.</span>
+                  <label class="checkbox-inline" style="font-size:11px;"><input id="customOnlyAnomalies" type="checkbox" /> Only Anomalies</label>
+                </div>
+                <div id="customFuzzerList" class="mutation-table-wrap"></div>
               </div>
             </div>
           </div>

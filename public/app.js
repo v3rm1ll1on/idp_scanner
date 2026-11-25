@@ -5,6 +5,8 @@ const state = {
   expandedTraces: new Set(),
   redirectMutations: [],
   paramMutations: [],
+  customPresets: [],
+  customBatchData: null,
   batchResults: new Map(),
   paramBatchResults: new Map(),
 };
@@ -257,6 +259,7 @@ function renderSelectedTrace() {
   if (trace.request.oauthParams?.redirect_uri) {
     refreshRedirectMutations(trace.request.oauthParams.redirect_uri);
   }
+  refreshCustomParamOptions();
 
   renderAudit(trace.audit);
 }
@@ -845,6 +848,7 @@ $('parseBtn').addEventListener('click', async () => {
   $('repBody').value = data.parsed.body || '';
   state.redirectMutations = data.redirectMutations || [];
   renderRedirectMutations();
+  refreshCustomParamOptions();
   renderAudit(data.audit);
   document.querySelector('[data-tab="repeater"]').click();
 });
@@ -881,6 +885,161 @@ $('repSendBtn').addEventListener('click', async () => {
 
 $('redirectOnlyAccepted').addEventListener('change', renderRedirectMutations);
 $('paramOnlyAccepted').addEventListener('change', renderParamFuzzerTable);
+$('customOnlyAnomalies').addEventListener('change', renderCustomFuzzerTable);
+
+function refreshCustomParamOptions() {
+  const sel = $('customParamSelect');
+  if (!sel) return;
+  const opts = ['<option value="">-- Custom --</option>'];
+
+  try {
+    const u = new URL($('repUrl').value.trim());
+    for (const k of new Set(u.searchParams.keys())) {
+      opts.push(`<option value="query:${escapeHtml(k)}">query: ${escapeHtml(k)}</option>`);
+    }
+  } catch {
+    // Ignore invalid URL
+  }
+
+  const body = ($('repBody').value || '').trim();
+  if (body) {
+    try {
+      const jsonObj = JSON.parse(body);
+      if (jsonObj && typeof jsonObj === 'object' && !Array.isArray(jsonObj)) {
+        for (const k of Object.keys(jsonObj)) {
+          opts.push(`<option value="body:${escapeHtml(k)}">body: ${escapeHtml(k)}</option>`);
+        }
+      }
+    } catch {
+      const sp = new URLSearchParams(body);
+      for (const k of new Set(sp.keys())) {
+        opts.push(`<option value="body:${escapeHtml(k)}">body: ${escapeHtml(k)}</option>`);
+      }
+    }
+  }
+
+  sel.innerHTML = opts.join('');
+}
+
+async function loadCustomPresets() {
+  const data = await api('/api/mutations/custom-presets');
+  state.customPresets = data.presets || [];
+  const sel = $('customPresetSelect');
+  sel.innerHTML = `<option value="">Load Payload Preset...</option>${state.customPresets
+    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)} (${p.payloads.length})</option>`)
+    .join('')}`;
+  if (state.customPresets[0] && !$('customPayloadsInput').value.trim()) {
+    $('customPayloadsInput').value = state.customPresets[0].payloads.join('\n');
+  }
+}
+
+$('customParamSelect').addEventListener('change', (e) => {
+  const val = e.target.value;
+  if (!val) return;
+  const idx = val.indexOf(':');
+  const loc = val.slice(0, idx);
+  const name = val.slice(idx + 1);
+  $('customTargetLoc').value = loc;
+  $('customParamInput').value = name;
+});
+
+$('customPresetSelect').addEventListener('change', (e) => {
+  const preset = state.customPresets.find((p) => p.id === e.target.value);
+  if (preset) {
+    $('customPayloadsInput').value = preset.payloads.join('\n');
+  }
+  e.target.value = '';
+});
+
+$('repUrl').addEventListener('change', refreshCustomParamOptions);
+$('repBody').addEventListener('change', refreshCustomParamOptions);
+
+function renderCustomFuzzerTable() {
+  const wrap = $('customFuzzerList');
+  const summaryEl = $('customFuzzerSummary');
+  const data = state.customBatchData;
+  if (!data || !data.results) {
+    wrap.innerHTML = '<div class="muted">No custom fuzzing results yet.</div>';
+    return;
+  }
+
+  const anomCount = data.results.filter((r) => r.anomaly).length;
+  summaryEl.innerHTML = `Baseline HTTP ${data.baseline.status} (${data.baseline.bodyLen}B) · ${data.results.length} tested · <span style="color:${anomCount ? '#fbbf24' : '#4ade80'}">${anomCount} ANOMALIES</span>`;
+
+  const onlyAnom = $('customOnlyAnomalies').checked;
+  const list = onlyAnom ? data.results.filter((r) => r.anomaly) : data.results;
+
+  wrap.innerHTML = `
+    <table class="mut-table">
+      <thead><tr><th>Payload</th><th>Status</th><th>Delta</th><th>Verdict</th><th></th></tr></thead>
+      <tbody>
+        ${list
+          .map(
+            (r) => `
+          <tr>
+            <td class="mono" style="word-break:break-all;">${escapeHtml(r.payload === '' ? '(empty)' : r.payload)}</td>
+            <td class="mono">${r.status}</td>
+            <td class="mono">${r.lenDelta >= 0 ? '+' : ''}${r.lenDelta}B</td>
+            <td><span class="badge ${r.anomaly ? 'badge-warn' : 'badge-muted'}">${escapeHtml(r.verdict)}</span></td>
+            <td><button class="btn btn-secondary use-custom-payload-btn" data-payload="${escapeHtml(r.payload)}">Load</button></td>
+          </tr>
+        `
+          )
+          .join('')}
+      </tbody>
+    </table>
+  `;
+
+  wrap.querySelectorAll('.use-custom-payload-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = $('customParamInput').value.trim();
+      const loc = $('customTargetLoc').value;
+      const payload = btn.dataset.payload;
+      if (!name) return;
+      if (loc === 'body') {
+        mutateTokenBody((p) => p.set(name, payload));
+      } else {
+        try {
+          const u = new URL($('repUrl').value);
+          u.searchParams.set(name, payload);
+          $('repUrl').value = u.toString();
+        } catch {
+          // Ignore
+        }
+      }
+    });
+  });
+}
+
+$('batchCustomBtn').addEventListener('click', async () => {
+  const baseUrl = $('repUrl').value.trim();
+  const paramName = $('customParamInput').value.trim();
+  const targetLocation = $('customTargetLoc').value;
+  const payloads = $('customPayloadsInput')
+    .value.split('\n')
+    .map((s) => s.replace(/\r$/, ''));
+  if (!baseUrl || !paramName || payloads.length === 0) return;
+
+  let headers = {};
+  try { headers = JSON.parse($('repHeaders').value || '{}'); } catch { headers = {}; }
+
+  const data = await api('/api/mutations/custom/batch', {
+    method: 'POST',
+    body: JSON.stringify({
+      method: $('repMethod').value,
+      baseUrl,
+      headers,
+      body: $('repBody').value,
+      targetLocation,
+      paramName,
+      payloads,
+      useCookieJar: $('repUseCookieJar').checked,
+    }),
+  });
+  state.customBatchData = data;
+  renderCustomFuzzerTable();
+  await loadTraces();
+});
 
 $('clearCookiesBtn').addEventListener('click', async () => {
   await api('/api/cookies', { method: 'DELETE' });
@@ -1289,6 +1448,8 @@ initTooltips();
 initResizers();
 loadMockConfig();
 loadParamMutations();
+loadCustomPresets();
+refreshCustomParamOptions();
 refreshRedirectMutations('http://localhost:3000/callback');
 refreshCookieJarBadge();
 loadTraces();
