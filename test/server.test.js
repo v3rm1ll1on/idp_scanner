@@ -686,3 +686,46 @@ test('Global Basic Auth propagates across redirect chains without overriding exp
     server.close();
   }
 });
+
+test('Host-based Catch-All Trap captures non-local Host requests on any path', async () => {
+  const { server, baseUrl } = await startTestServer();
+  try {
+    // Localhost unknown path still 404s
+    const local404 = await fetch(`${baseUrl}/unknown-local-path`);
+    assert.equal(local404.status, 404);
+
+    // Non-local Host (simulated /etc/hosts attacker.example -> 127.0.0.1) is trapped on any path
+    const { port } = server.address();
+    const trapRes = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/evil/anything?code=stolen_999&state=s1',
+          method: 'GET',
+          headers: {
+            Host: 'attacker.example:3000',
+            Referer: 'https://idp.target.com/authorize',
+          },
+        },
+        (res) => {
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => resolve({ status: res.statusCode, body }));
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(trapRes.status, 200);
+    assert.ok(trapRes.body.includes('Attacker Trap Captured'));
+
+    const traces = (await (await fetch(`${baseUrl}/api/traces`)).json()).traces;
+    assert.equal(traces[0].label, 'attacker_trap');
+    assert.equal(traces[0].request.oauthParams.code, 'stolen_999');
+    assert.equal(traces[0].request.headers.referer, 'https://idp.target.com/authorize');
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});

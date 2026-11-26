@@ -37,6 +37,79 @@ export function createApp() {
   });
 
   app.use(express.json({ limit: '2mb' }));
+
+  // Host-based Catch-All Trap: captures any path when accessed via non-local Host (e.g. /etc/hosts attacker.example -> 127.0.0.1)
+  app.use(express.urlencoded({ extended: false }));
+  app.use((req, res, next) => {
+    const reqHost = (req.hostname || '').toLowerCase();
+    const isLocal = reqHost === 'localhost' || reqHost === '127.0.0.1' || reqHost === '::1';
+    if (isLocal || req.path === '/api/callback-fragment') {
+      return next();
+    }
+
+    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    let parsed;
+    try {
+      parsed = parseOAuthUrl(fullUrl);
+    } catch {
+      parsed = { oauthParams: {}, flowKind: 'attacker_trap' };
+    }
+    const bodyParams = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const mergedParams = { ...parsed.oauthParams, ...bodyParams };
+    const audit = auditOAuthContext({
+      requestHeaders: req.headers,
+      oauthParams: mergedParams,
+      status: 200,
+    });
+
+    store.add({
+      id: crypto.randomUUID(),
+      traceGroupId: crypto.randomUUID(),
+      hopIndex: 0,
+      timestamp: new Date().toISOString(),
+      label: 'attacker_trap',
+      flowKind: `trap:${req.method}:${parsed.flowKind || 'hit'}`,
+      durationMs: 0,
+      request: {
+        method: req.method,
+        url: fullUrl,
+        headers: req.headers,
+        body: Object.keys(bodyParams).length ? new URLSearchParams(bodyParams).toString() : '',
+        oauthParams: mergedParams,
+      },
+      response: {
+        status: 200,
+        statusText: 'Trap Captured',
+        headers: { 'content-type': 'text/html' },
+        cookies: [],
+        location: null,
+        body: '',
+        oauthParams: mergedParams,
+      },
+      audit,
+    });
+
+    return res.type('html').send(`<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>OAuth Trap Captured</title></head>
+<body style="font-family: ui-monospace, monospace; background:#0b1120; color:#f1f5f9; padding:24px;">
+  <h2>Attacker Trap Captured</h2>
+  <p>Host: <strong>${req.get('host')}</strong> · Path: <strong>${req.originalUrl}</strong></p>
+  <pre id="out"></pre>
+  <script>
+    document.getElementById('out').textContent = window.location.href;
+    if (window.location.hash && window.location.hash.length > 1) {
+      fetch('/api/callback-fragment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullUrl: window.location.href })
+      });
+    }
+  </script>
+</body>
+</html>`);
+  });
+
   app.use('/mock-idp', mockIdp.router);
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
