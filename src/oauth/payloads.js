@@ -30,6 +30,9 @@ export const RedirectUriMutationType = Object.freeze({
   WHITESPACE_TAB_HOST: 'WHITESPACE_TAB_HOST',
   UNICODE_FULLWIDTH_SLASH: 'UNICODE_FULLWIDTH_SLASH',
   CUSTOM_SCHEME_MOBILE: 'CUSTOM_SCHEME_MOBILE',
+  PROTOCOL_RELATIVE: 'PROTOCOL_RELATIVE',
+  FRAGMENT_AT_CONFUSION: 'FRAGMENT_AT_CONFUSION',
+  TRAILING_DOT_FQDN: 'TRAILING_DOT_FQDN',
 });
 
 /**
@@ -205,28 +208,28 @@ export function generateRedirectUriMutations(baseRedirectUri, attackerHost = 'at
       id: RedirectUriMutationType.IPV4_DECIMAL,
       category: 'Local / Loopback',
       label: 'Decimal IPv4 loopback (2130706433)',
-      uri: 'http://2130706433/callback',
+      uri: `http://2130706433${path}`,
       rationale: 'Tests IPv4 allowlist bypass using decimal representation of 127.0.0.1.',
     },
     {
       id: RedirectUriMutationType.IPV4_HEX,
       category: 'Local / Loopback',
       label: 'Hex IPv4 loopback (0x7f000001)',
-      uri: 'http://0x7f000001/callback',
+      uri: `http://0x7f000001${path}`,
       rationale: 'Tests IPv4 allowlist bypass using hexadecimal representation of 127.0.0.1.',
     },
     {
       id: RedirectUriMutationType.IPV4_SHORT,
       category: 'Local / Loopback',
       label: 'Shortened IPv4 loopback (127.1)',
-      uri: 'http://127.1/callback',
+      uri: `http://127.1${path}`,
       rationale: 'Tests IPv4 shorthand parsing differences.',
     },
     {
       id: RedirectUriMutationType.IPV4_ALL_ZEROS,
       category: 'Local / Loopback',
       label: 'Unspecified IPv4 (0.0.0.0)',
-      uri: 'http://0.0.0.0/callback',
+      uri: `http://0.0.0.0${path}`,
       rationale: 'Tests if 0.0.0.0 is permitted as a local callback host.',
     },
     {
@@ -249,6 +252,27 @@ export function generateRedirectUriMutations(baseRedirectUri, attackerHost = 'at
       label: 'Custom mobile scheme (myapp://callback)',
       uri: 'myapp://callback',
       rationale: 'Tests if arbitrary custom URI schemes are accepted for mobile/desktop hijacking.',
+    },
+    {
+      id: RedirectUriMutationType.PROTOCOL_RELATIVE,
+      category: 'Parser Confusion',
+      label: 'Protocol-relative redirect (//attacker)',
+      uri: `//${attacker}${path}`,
+      rationale: 'Bypasses relative-path validators checking startsWith("/") while browsers resolve // as external host.',
+    },
+    {
+      id: RedirectUriMutationType.FRAGMENT_AT_CONFUSION,
+      category: 'Parser Confusion',
+      label: 'Fragment @ authority confusion (#@target)',
+      uri: `https://${attacker}#@${host}${path}`,
+      rationale: 'Exploits validators matching @target after # while browsers strip fragments and route to attacker.',
+    },
+    {
+      id: RedirectUriMutationType.TRAILING_DOT_FQDN,
+      category: 'Host / Domain',
+      label: 'FQDN trailing dot (target.com.)',
+      uri: `${parsed.protocol}//${host}.${portPart}${path}`,
+      rationale: 'Tests strict hostname string equality vs DNS FQDN trailing-dot resolution.',
     },
   ];
 }

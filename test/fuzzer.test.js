@@ -56,21 +56,21 @@ test('evaluateRedirectProbe handles ACCEPTED_REDIRECT and relative error paths',
   assert.equal(relErr.verdict, 'REDIRECT_ERROR');
 });
 
-test('batchTestRedirectUris runs all 28 payloads with expected strict vs weakPrefix verdicts', async () => {
+test('batchTestRedirectUris runs all 31 payloads with expected strict vs weakPrefix verdicts', async () => {
   const { server, baseUrl, mockIdp } = await startServer();
   const store = new TraceStore();
   try {
     mockIdp.setConfig({ allowedRedirectPrefix: baseUrl, weakPrefixRedirect: false, allowOpenRedirect: false });
     const authUrl = `${baseUrl}/mock-idp/authorize?client_id=c1&redirect_uri=${encodeURIComponent(`${baseUrl}/callback`)}&response_type=code&state=s1`;
     const allMuts = generateRedirectUriMutations(`${baseUrl}/callback`, 'evil.example');
-    assert.equal(allMuts.length, 28);
+    assert.equal(allMuts.length, 31);
 
     const strictRes = await batchTestRedirectUris(store, {
       baseUrl: authUrl,
       mutations: allMuts,
       attackerHost: 'evil.example',
     });
-    assert.equal(strictRes.length, 28);
+    assert.equal(strictRes.length, 31);
     const mustBlockStrict = new Set([
       'SUBDOMAIN_SUFFIX',
       'WHITELIST_SUBSTRING_PATH',
@@ -80,6 +80,8 @@ test('batchTestRedirectUris runs all 28 payloads with expected strict vs weakPre
       'DOUBLE_URL_ENCODE',
       'NULL_BYTE_TRUNCATION',
       'CUSTOM_SCHEME_MOBILE',
+      'PROTOCOL_RELATIVE',
+      'FRAGMENT_AT_CONFUSION',
     ]);
     for (const r of strictRes) {
       if (mustBlockStrict.has(r.id)) {
