@@ -51,22 +51,27 @@ async function loadMockConfig() {
 function renderNetStatus(cfg) {
   const tlsPart = cfg.insecureTls ? '<span style="color:#fbbf24">TLS: insecure</span>' : 'TLS: strict';
   const proxyPart = cfg.proxyUrl ? `<span style="color:#38bdf8">Proxy: ${escapeHtml(cfg.proxyUrl)}</span>` : 'Proxy: off';
-  $('netStatusText').innerHTML = `${tlsPart} · ${proxyPart}`;
+  const authPart = cfg.hasBasicAuth
+    ? `<span style="color:#4ade80">Auth: ${escapeHtml(cfg.basicAuthUser || 'Basic')}</span>`
+    : 'Auth: off';
+  $('netStatusText').innerHTML = `${tlsPart} · ${proxyPart} · ${authPart}`;
 }
 
 async function loadNetworkConfig() {
   const cfg = await api('/api/network');
   $('netInsecureTls').checked = Boolean(cfg.insecureTls);
   $('netProxyUrl').value = cfg.proxyUrl || '';
+  if (cfg.basicAuthUser) $('netBasicUser').value = cfg.basicAuthUser;
   renderNetStatus(cfg);
 }
 
-async function saveNetworkConfig() {
+async function saveNetworkConfig(extra = {}) {
   const data = await api('/api/network', {
     method: 'POST',
     body: JSON.stringify({
       insecureTls: $('netInsecureTls').checked,
       proxyUrl: $('netProxyUrl').value.trim(),
+      ...extra,
     }),
   });
   if (data.error) {
@@ -76,8 +81,21 @@ async function saveNetworkConfig() {
   renderNetStatus(data);
 }
 
-$('netInsecureTls').addEventListener('change', saveNetworkConfig);
-$('netApplyBtn').addEventListener('click', saveNetworkConfig);
+$('netInsecureTls').addEventListener('change', () => saveNetworkConfig());
+$('netApplyBtn').addEventListener('click', () => saveNetworkConfig());
+$('netSetBasicBtn').addEventListener('click', () => {
+  saveNetworkConfig({
+    basicAuth: {
+      username: $('netBasicUser').value,
+      password: $('netBasicPass').value,
+    },
+  });
+});
+$('netClearBasicBtn').addEventListener('click', () => {
+  $('netBasicUser').value = '';
+  $('netBasicPass').value = '';
+  saveNetworkConfig({ basicAuth: null });
+});
 
 let renderTimer = null;
 function scheduleTraceRender() {

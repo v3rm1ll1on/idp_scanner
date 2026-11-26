@@ -586,3 +586,93 @@ test('Network settings: self-signed TLS bypass and upstream HTTP proxy routing w
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('Global Basic Auth propagates across redirect chains without overriding explicit Authorization', async () => {
+  const { server, baseUrl } = await startTestServer();
+  const { default: express } = await import('express');
+
+  const gateApp = express();
+  const expectedBasic = `Basic ${Buffer.from('gateuser:gatepass').toString('base64')}`;
+
+  gateApp.get('/start', (req, res) => {
+    if (req.get('Authorization') !== expectedBasic) return res.status(401).send('gate1');
+    return res.redirect(302, '/final');
+  });
+  gateApp.get('/final', (req, res) => {
+    if (req.get('Authorization') !== expectedBasic) return res.status(401).send('gate2');
+    return res.json({ gatePassed: true });
+  });
+  gateApp.get('/bearer-only', (req, res) => {
+    return res.json({ authHeader: req.get('Authorization') || '' });
+  });
+
+  const gateServer = await new Promise((resolve) => {
+    const s = gateApp.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  const gateBase = `http://127.0.0.1:${gateServer.address().port}`;
+
+  try {
+    // 1. Set global Basic Auth (verify no password leak in GET /api/network)
+    const setRes = await (
+      await fetch(`${baseUrl}/api/network`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ basicAuth: { username: 'gateuser', password: 'gatepass' } }),
+      })
+    ).json();
+    assert.equal(setRes.hasBasicAuth, true);
+    assert.equal(setRes.basicAuthUser, 'gateuser');
+    assert.equal(setRes.basicAuthHeader, undefined);
+
+    // 2. Multi-hop redirect chain receives global Basic Auth on every hop
+    const chainRes = await (
+      await fetch(`${baseUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'GET', url: `${gateBase}/start`, followRedirects: true }),
+      })
+    ).json();
+    assert.equal(chainRes.hops.length, 2);
+    assert.equal(chainRes.hops[0].response.status, 302);
+    assert.equal(chainRes.hops[1].response.status, 200);
+    assert.equal(JSON.parse(chainRes.hops[1].response.body).gatePassed, true);
+
+    // 3. Explicit Authorization: Bearer header is NOT overwritten by global Basic Auth
+    const bearerRes = await (
+      await fetch(`${baseUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'GET',
+          url: `${gateBase}/bearer-only`,
+          headers: { authorization: 'Bearer explicit_token_123' },
+        }),
+      })
+    ).json();
+    assert.equal(JSON.parse(bearerRes.hops[0].response.body).authHeader, 'Bearer explicit_token_123');
+
+    // 4. Clear global Basic Auth -> gate rejects with 401
+    const cleared = await (
+      await fetch(`${baseUrl}/api/network`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ basicAuth: null }),
+      })
+    ).json();
+    assert.equal(cleared.hasBasicAuth, false);
+
+    const unauthRes = await (
+      await fetch(`${baseUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'GET', url: `${gateBase}/start`, followRedirects: false }),
+      })
+    ).json();
+    assert.equal(unauthRes.hops[0].response.status, 401);
+  } finally {
+    gateServer.closeAllConnections?.();
+    gateServer.close();
+    server.closeAllConnections?.();
+    server.close();
+  }
+});

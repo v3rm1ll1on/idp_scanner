@@ -39,7 +39,15 @@
             <input id="netProxyUrl" class="input mono" type="text" placeholder="http://127.0.0.1:8080" data-tip="Optional HTTP(S) upstream proxy (e.g. Burp Suite at http://127.0.0.1:8080)." />
             <button id="netApplyBtn" class="btn btn-secondary" data-tip="Save Network & Proxy settings.">Apply</button>
           </div>
-          <div id="netStatusText" class="muted mono" style="font-size:10.5px;">TLS: strict · Proxy: off</div>
+          <div class="form-row">
+            <input id="netBasicUser" class="input mono" type="text" placeholder="Global Basic user" data-tip="Global Basic Auth username (applied to all requests & redirect hops unless Authorization is already set)." />
+            <input id="netBasicPass" class="input mono" type="password" placeholder="pass" data-tip="Global Basic Auth password." />
+          </div>
+          <div class="form-row">
+            <button id="netSetBasicBtn" class="btn btn-secondary" style="flex:1;" data-tip="Activate global Basic Auth for all outgoing requests & chains.">Set Global Auth</button>
+            <button id="netClearBasicBtn" class="btn btn-ghost" data-tip="Clear global Basic Auth.">Clear Auth</button>
+          </div>
+          <div id="netStatusText" class="muted mono" style="font-size:10.5px;">TLS: strict · Proxy: off · Auth: off</div>
         </div>
       </details>
 

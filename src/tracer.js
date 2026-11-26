@@ -27,6 +27,21 @@ export function createDispatcher(networkConfig = {}) {
 }
 
 /**
+ * Applies global Basic Auth header if configured and no explicit Authorization header is already set.
+ * @param {object} headers
+ * @param {{basicAuthHeader?: string}|null} networkConfig
+ * @returns {object}
+ */
+export function applyGlobalBasicAuth(headers, networkConfig) {
+  if (!networkConfig?.basicAuthHeader) return headers;
+  const hasExplicitAuth = Object.keys(headers).some((k) => k.toLowerCase() === 'authorization');
+  if (!hasExplicitAuth) {
+    headers.Authorization = networkConfig.basicAuthHeader;
+  }
+  return headers;
+}
+
+/**
  * In-memory HTTP trace store with pub/sub notifications for SSE streaming.
  */
 export class TraceStore {
@@ -148,6 +163,7 @@ export async function sendAndTrace(store, options) {
     delete reqHeaders.host;
     delete reqHeaders['Content-Length'];
     delete reqHeaders['content-length'];
+    applyGlobalBasicAuth(reqHeaders, networkConfig);
 
     if (cookieJar && !reqHeaders.Cookie && !reqHeaders.cookie) {
       const jarHeader = cookieJar.getCookieHeader(currentUrl);

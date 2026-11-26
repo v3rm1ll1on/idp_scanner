@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createMockIdp } from './mock-idp.js';
 import { fetch as undiciFetch } from 'undici';
-import { TraceStore, createDispatcher, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField, batchTestTokenEndpoint } from './tracer.js';
+import { TraceStore, createDispatcher, applyGlobalBasicAuth, sendAndTrace, batchTestRedirectUris, batchTestOAuthParams, batchTestCustomField, batchTestTokenEndpoint } from './tracer.js';
 import { parseOAuthUrl, parseRawHttpRequest, summarizeDiscovery } from './oauth/parser.js';
 import { auditOAuthContext } from './oauth/analyzer.js';
 import { generateRedirectUriMutations, getOAuthParameterMutations, getCustomFieldPresets, getTokenEndpointMutations } from './oauth/payloads.js';
@@ -25,7 +25,16 @@ export function createApp() {
   const networkConfig = {
     insecureTls: false,
     proxyUrl: '',
+    basicAuthUser: '',
+    basicAuthHeader: '',
   };
+
+  const publicNetworkView = () => ({
+    insecureTls: networkConfig.insecureTls,
+    proxyUrl: networkConfig.proxyUrl,
+    basicAuthUser: networkConfig.basicAuthUser,
+    hasBasicAuth: Boolean(networkConfig.basicAuthHeader),
+  });
 
   app.use(express.json({ limit: '2mb' }));
   app.use('/mock-idp', mockIdp.router);
@@ -36,11 +45,11 @@ export function createApp() {
   });
 
   app.get('/api/network', (_req, res) => {
-    res.json({ ...networkConfig });
+    res.json(publicNetworkView());
   });
 
   app.post('/api/network', (req, res) => {
-    const { insecureTls, proxyUrl } = req.body || {};
+    const { insecureTls, proxyUrl, basicAuth } = req.body || {};
     if (typeof proxyUrl === 'string') {
       const trimmed = proxyUrl.trim();
       if (trimmed) {
@@ -60,7 +69,21 @@ export function createApp() {
     if (typeof insecureTls === 'boolean') {
       networkConfig.insecureTls = insecureTls;
     }
-    return res.json({ ...networkConfig });
+    if (basicAuth === null) {
+      networkConfig.basicAuthUser = '';
+      networkConfig.basicAuthHeader = '';
+    } else if (basicAuth && typeof basicAuth === 'object') {
+      const u = String(basicAuth.username || '');
+      const p = String(basicAuth.password || '');
+      if (!u && !p) {
+        networkConfig.basicAuthUser = '';
+        networkConfig.basicAuthHeader = '';
+      } else {
+        networkConfig.basicAuthUser = u;
+        networkConfig.basicAuthHeader = `Basic ${Buffer.from(`${u}:${p}`, 'utf8').toString('base64')}`;
+      }
+    }
+    return res.json(publicNetworkView());
   });
 
   app.get('/api/traces', (_req, res) => {
@@ -359,8 +382,9 @@ export function createApp() {
       let keySet = jwks;
       if (!keySet && jwksUri) {
         const dispatcher = createDispatcher(networkConfig);
+        const jwksHeaders = applyGlobalBasicAuth({ Accept: 'application/json', ...headers }, networkConfig);
         const jwksRes = await undiciFetch(jwksUri, {
-          headers: { Accept: 'application/json', ...headers },
+          headers: jwksHeaders,
           signal: AbortSignal.timeout(10000),
           ...(dispatcher ? { dispatcher } : {}),
         });
