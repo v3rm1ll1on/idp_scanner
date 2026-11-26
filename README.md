@@ -30,6 +30,16 @@ node src/server.js
 
 Open `http://127.0.0.1:3000` in your browser (or `http://127.0.0.1:3000/?demo=true` for the built-in Mock IdP sandbox).
 
+### HTTPS / HSTS Listener
+
+Start an additional HTTPS listener (auto-generates a self-signed SAN cert, or pass your own `SSL_CERT`/`SSL_KEY` e.g. from `mkcert`):
+
+```bash
+HTTPS=true HTTPS_PORT=3443 SSL_DOMAINS=localhost,attacker.example node src/server.js
+# Or with port 443 + custom cert:
+sudo HTTPS_PORT=443 SSL_CERT=./cert.pem SSL_KEY=./key.pem node src/server.js
+```
+
 ## Running Tests
 
 ```bash

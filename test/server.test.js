@@ -7,7 +7,7 @@ import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { createApp } from '../src/server.js';
+import { createApp, generateSelfSignedCert } from '../src/server.js';
 import { RedirectUriMutationType } from '../src/oauth/payloads.js';
 
 async function startTestServer() {
@@ -724,6 +724,31 @@ test('Host-based Catch-All Trap captures non-local Host requests on any path', a
     assert.equal(traces[0].label, 'attacker_trap');
     assert.equal(traces[0].request.oauthParams.code, 'stolen_999');
     assert.equal(traces[0].request.headers.referer, 'https://idp.target.com/authorize');
+
+    // Also verify HTTPS listener with generated self-signed SAN cert
+    const creds = generateSelfSignedCert(['localhost', 'attacker.example']);
+    const httpsServer = https.createServer(creds, createApp().app);
+    await new Promise((resolve) => httpsServer.listen(0, '127.0.0.1', resolve));
+    try {
+      const httpsPort = httpsServer.address().port;
+      const sslHealth = await new Promise((resolve, reject) => {
+        const req = https.request(
+          { host: '127.0.0.1', port: httpsPort, path: '/api/health', rejectUnauthorized: false },
+          (res) => {
+            let b = '';
+            res.on('data', (c) => (b += c));
+            res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(b) }));
+          }
+        );
+        req.on('error', reject);
+        req.end();
+      });
+      assert.equal(sslHealth.status, 200);
+      assert.equal(sslHealth.body.ok, true);
+    } finally {
+      httpsServer.closeAllConnections?.();
+      httpsServer.close();
+    }
   } finally {
     server.closeAllConnections?.();
     server.close();

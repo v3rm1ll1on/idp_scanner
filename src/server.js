@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import https from 'node:https';
+import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createMockIdp } from './mock-idp.js';
@@ -637,6 +641,37 @@ export function createApp() {
   return { app, store, mockIdp, cookieJar };
 }
 
+/**
+ * Generates an ephemeral self-signed TLS certificate with SANs for local HTTPS/HSTS testing.
+ * @param {Array<string>} [domains]
+ * @returns {{key: Buffer, cert: Buffer}}
+ */
+export function generateSelfSignedCert(domains = ['localhost', 'attacker.example']) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'owb-ssl-'));
+  const keyPath = path.join(tmpDir, 'key.pem');
+  const certPath = path.join(tmpDir, 'cert.pem');
+  const sanEntries = [
+    ...domains.map((d) => `DNS:${d}`),
+    'IP:127.0.0.1',
+  ].join(',');
+
+  try {
+    execFileSync('openssl', [
+      'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+      '-keyout', keyPath, '-out', certPath,
+      '-days', '30',
+      '-subj', `/CN=${domains[0] || 'localhost'}`,
+      '-addext', `subjectAltName=${sanEntries}`,
+    ], { stdio: 'ignore' });
+    return {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const port = Number(process.env.PORT || 3000);
@@ -646,4 +681,29 @@ if (isMain) {
     console.log(`OAuth Workbench listening on http://${host}:${port}`);
     console.log(`Mock IdP available at http://${host}:${port}/mock-idp/.well-known/openid-configuration`);
   });
+
+  const enableHttps =
+    process.env.HTTPS === 'true' ||
+    Boolean(process.env.HTTPS_PORT) ||
+    Boolean(process.env.SSL_CERT && process.env.SSL_KEY);
+
+  if (enableHttps) {
+    const httpsPort = Number(process.env.HTTPS_PORT || 3443);
+    const creds =
+      process.env.SSL_CERT && process.env.SSL_KEY
+        ? {
+            cert: fs.readFileSync(process.env.SSL_CERT),
+            key: fs.readFileSync(process.env.SSL_KEY),
+          }
+        : generateSelfSignedCert(
+            (process.env.SSL_DOMAINS || 'localhost,attacker.example')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          );
+
+    https.createServer(creds, app).listen(httpsPort, host, () => {
+      console.log(`OAuth Workbench HTTPS listening on https://${host}:${httpsPort}`);
+    });
+  }
 }
