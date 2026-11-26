@@ -98,13 +98,25 @@ test('evaluateRedirectProbe distinguishes credential redirect vs error redirect 
   assert.equal(cred.verdict, 'ACCEPTED_WITH_CREDENTIAL');
 
   const errRedirect = evaluateRedirectProbe({
-    status: 302,
+    status: 307,
     location: 'https://evil.test/cb?error=invalid_request',
     mutatedUri: 'https://evil.test/cb',
     attackerHost: 'evil.test',
   });
   assert.equal(errRedirect.accepted, false);
   assert.equal(errRedirect.verdict, 'REDIRECT_ERROR');
+  assert.equal(errRedirect.errorDetail, 'error=invalid_request');
+
+  const bodyErrRedirect = evaluateRedirectProbe({
+    status: 307,
+    location: 'https://evil.test/cb',
+    mutatedUri: 'https://evil.test/cb',
+    attackerHost: 'evil.test',
+    responseBody: '{"error":"invalid_redirect_uri"}',
+  });
+  assert.equal(bodyErrRedirect.accepted, false);
+  assert.equal(bodyErrRedirect.verdict, 'REDIRECT_ERROR');
+  assert.equal(bodyErrRedirect.errorDetail, 'body:invalid_redirect_uri');
 
   const blocked = evaluateRedirectProbe({
     status: 400,

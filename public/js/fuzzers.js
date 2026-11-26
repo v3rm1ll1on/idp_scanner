@@ -32,7 +32,8 @@ export function renderRedirectMutations() {
   if (state.batchResults.size > 0) {
     const all = [...state.batchResults.values()];
     const acc = all.filter((r) => r.accepted).length;
-    summaryEl.innerHTML = `${all.length} probed · <span style="color:${acc ? '#f87171' : '#4ade80'}">${acc} ACCEPTED</span> · ${all.length - acc} blocked`;
+    const errRedirs = all.filter((r) => r.verdict === 'REDIRECT_ERROR').length;
+    summaryEl.innerHTML = `${all.length} probed · <span style="color:${acc ? '#f87171' : '#4ade80'}">${acc} ACCEPTED</span>${errRedirs ? ` · <span style="color:#fbbf24">${errRedirs} err-redirect</span>` : ''} · ${all.length - acc - errRedirs} blocked`;
   } else {
     summaryEl.textContent = `${state.redirectMutations.length} payloads ready.`;
   }
@@ -45,9 +46,19 @@ export function renderRedirectMutations() {
     .map((m) => {
       const res = state.batchResults.get(m.id);
       const badgeCls = !res ? '' : res.accepted ? 'badge-danger' : res.verdict === 'REDIRECT_ERROR' ? 'badge-warn' : 'badge-ok';
-      const statusCell = res
-        ? `<span class="badge ${badgeCls}">${escapeHtml(res.verdict || (res.accepted ? 'ACCEPTED' : 'BLOCKED'))} (${res.status})</span>`
-        : '<span class="muted">-</span>';
+      let statusCell = '<span class="muted">-</span>';
+      if (res) {
+        const errLine = res.errorDetail
+          ? `<div class="mono" style="color:#fbbf24;font-size:10px;margin-top:2px;word-break:break-all;">${escapeHtml(res.errorDetail)}</div>`
+          : '';
+        const locShort = res.location
+          ? (() => {
+              const s = res.location.length > 42 ? `${res.location.slice(0, 39)}...` : res.location;
+              return `<div class="mono muted" style="font-size:10px;margin-top:2px;word-break:break-all;" title="${escapeHtml(res.location)}">-&gt; ${escapeHtml(s)}</div>`;
+            })()
+          : '';
+        statusCell = `<span class="badge ${badgeCls}">${escapeHtml(res.verdict || (res.accepted ? 'ACCEPTED' : 'BLOCKED'))} (${res.status})</span>${errLine}${locShort}`;
+      }
       return `
         <tr>
           <td><span class="badge badge-muted">${escapeHtml(m.category)}</span></td>

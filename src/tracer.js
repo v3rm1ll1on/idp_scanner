@@ -90,13 +90,27 @@ export class TraceStore {
  * @param {object} params
  * @returns {{accepted: boolean, verdict: string, hasCredential: boolean, hasError: boolean}}
  */
-export function evaluateRedirectProbe({ status, location, mutatedUri, attackerHost }) {
+export function evaluateRedirectProbe({ status, location, mutatedUri, attackerHost, responseBody = '' }) {
   if (status < 300 || status >= 400 || !location) {
-    return { accepted: false, verdict: 'BLOCKED', hasCredential: false, hasError: false };
+    return { accepted: false, verdict: 'BLOCKED', hasCredential: false, hasError: false, errorDetail: null };
   }
 
   const hasCredential = /([?&#])(code|access_token|id_token)=/i.test(location);
-  const hasError = /([?&#])error=/i.test(location);
+  const locErrMatch = location.match(/[?&#](error|error_code|error_description|err)=([^&#]+)/i);
+  let errorDetail = null;
+  if (locErrMatch) {
+    try {
+      errorDetail = `${locErrMatch[1]}=${decodeURIComponent(locErrMatch[2])}`;
+    } catch {
+      errorDetail = `${locErrMatch[1]}=${locErrMatch[2]}`;
+    }
+  } else if (responseBody) {
+    const bodyErrMatch = String(responseBody).match(/"error"\s*:\s*"([^"]+)"/i);
+    if (bodyErrMatch) {
+      errorDetail = `body:${bodyErrMatch[1]}`;
+    }
+  }
+  const hasError = Boolean(errorDetail);
 
   let pointsToAttacker = false;
   if (attackerHost) {
@@ -114,12 +128,12 @@ export function evaluateRedirectProbe({ status, location, mutatedUri, attackerHo
   const matchesMutatedBase = location.toLowerCase().startsWith(baseTarget);
 
   if (hasCredential && !hasError) {
-    return { accepted: true, verdict: 'ACCEPTED_WITH_CREDENTIAL', hasCredential, hasError };
+    return { accepted: true, verdict: 'ACCEPTED_WITH_CREDENTIAL', hasCredential, hasError, errorDetail };
   }
   if (!hasError && (pointsToAttacker || matchesMutatedBase)) {
-    return { accepted: true, verdict: 'ACCEPTED_REDIRECT', hasCredential, hasError };
+    return { accepted: true, verdict: 'ACCEPTED_REDIRECT', hasCredential, hasError, errorDetail };
   }
-  return { accepted: false, verdict: hasError ? 'REDIRECT_ERROR' : 'BLOCKED', hasCredential, hasError };
+  return { accepted: false, verdict: hasError ? 'REDIRECT_ERROR' : 'BLOCKED', hasCredential, hasError, errorDetail };
 }
 
 /**
@@ -332,6 +346,7 @@ export async function batchTestRedirectUris(
         location,
         mutatedUri: mut.uri,
         attackerHost,
+        responseBody: hop.response.body || '',
       });
 
       results.push({
@@ -343,6 +358,7 @@ export async function batchTestRedirectUris(
         location,
         accepted: evaluation.accepted,
         verdict: evaluation.verdict,
+        errorDetail: evaluation.errorDetail,
         traceId: hop.id,
       });
     } catch (err) {
