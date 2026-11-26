@@ -296,7 +296,10 @@
           <div class="pane" style="gap:10px;">
             <div class="pane-title">
               <span>OIDC / OAuth2 Discovery Overview</span>
-              <button id="copyDiscoveryJsonBtn" class="btn btn-secondary" style="display:none;" data-tip="Copy the full raw discovery JSON.">Copy Raw JSON</button>
+              <div class="form-row">
+                <input id="discClientIdInput" class="input mono" type="text" value="" placeholder="client_id (default: demo-client)" style="width:210px;" data-tip="Client ID used by Build Auth and Load POST -> Repeater." />
+                <button id="copyDiscoveryJsonBtn" class="btn btn-secondary" style="display:none;" data-tip="Copy the full raw discovery JSON.">Copy Raw JSON</button>
+              </div>
             </div>
             <div id="discoveryStructured">
               <div class="muted">Click "Discover" in the top bar to fetch /.well-known/openid-configuration.</div>

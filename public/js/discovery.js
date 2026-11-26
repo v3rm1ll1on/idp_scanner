@@ -100,17 +100,38 @@ export function renderDiscovery(data, { onRefreshRedirectMutations, onRefreshCus
   container.querySelectorAll('.disc-copy-scope').forEach((el) => {
     el.addEventListener('click', () => copyToClipboard(el.dataset.scope, `Copied scope: ${el.dataset.scope}`));
   });
+  const clientIdInput = $('discClientIdInput');
+  if (clientIdInput && !clientIdInput.value) {
+    clientIdInput.value = localStorage.getItem('owb_client_id') || '';
+  }
+  const getClientId = () => {
+    const val = (clientIdInput?.value || '').trim() || 'demo-client';
+    if (clientIdInput?.value.trim()) localStorage.setItem('owb_client_id', clientIdInput.value.trim());
+    return val;
+  };
+
   container.querySelectorAll('.disc-load-auth').forEach((btn) => {
     btn.addEventListener('click', () => {
       const u = new URL(btn.dataset.url);
-      u.searchParams.set('client_id', 'demo-client');
+      const chosenRt = rt.includes('code') ? 'code' : (rt[0] || 'code');
+      let chosenScope = 'openid profile email';
+      if (scopes.length > 0) {
+        const preferred = ['openid', 'profile', 'email'].filter((x) => scopes.includes(x));
+        chosenScope = preferred.length > 0 ? preferred.join(' ') : scopes[0];
+      }
+
+      u.searchParams.set('client_id', getClientId());
       u.searchParams.set('redirect_uri', `${window.location.origin}/callback`);
-      u.searchParams.set('response_type', 'code');
-      u.searchParams.set('scope', scopes.includes('openid') ? 'openid profile email' : (scopes[0] || 'openid'));
+      u.searchParams.set('response_type', chosenRt);
+      u.searchParams.set('scope', chosenScope);
       u.searchParams.set('state', randomToken(16));
+      if (chosenScope.split(/\s+/).includes('openid') || chosenRt.includes('id_token')) {
+        u.searchParams.set('nonce', randomToken(16));
+      }
+
       $('repMethod').value = 'GET';
       $('repUrl').value = u.toString();
-      $('repHeaders').value = '{}';
+      if (!$('repHeaders').value.trim()) $('repHeaders').value = '{}';
       $('repBody').value = '';
       onRefreshRedirectMutations(`${window.location.origin}/callback`);
       onRefreshCustomParams();
@@ -126,7 +147,7 @@ export function renderDiscovery(data, { onRefreshRedirectMutations, onRefreshCus
         grant_type: 'authorization_code',
         code: 'PASTE_CODE_HERE',
         redirect_uri: `${window.location.origin}/callback`,
-        client_id: 'demo-client',
+        client_id: getClientId(),
       }).toString();
       onRefreshCustomParams();
       document.querySelector('[data-tab="repeater"]').click();
