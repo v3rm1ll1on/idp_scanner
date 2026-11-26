@@ -158,6 +158,7 @@
               <div class="form-row" style="gap:6px; margin-top:2px;">
                 <button id="genPkceBtn" class="btn btn-secondary" data-tip="Generate a random code_verifier and SHA-256 code_challenge (S256) into the URL.">Gen PKCE (S256)</button>
                 <button id="genStateBtn" class="btn btn-secondary" data-tip="Generate high-entropy state and nonce parameters into the URL.">Gen State &amp; Nonce</button>
+                <button id="encodeQueryBtn" class="btn btn-secondary" data-tip="URL-encode special characters in all query parameter values (preserving existing %XX sequences).">URL-Encode</button>
                 <select id="quickMutateSelect" class="input mono" style="flex:1;" data-tip="Apply a quick OAuth or Token-Endpoint mutation to the current request.">
                   <option value="">Quick Mutate...</option>
                 </select>
@@ -209,7 +210,10 @@
                 </div>
                 <div class="form-row" style="justify-content:space-between;">
                   <span id="redirectFuzzerSummary" class="muted mono">Not probed yet.</span>
-                  <label class="checkbox-inline" style="font-size:11px;"><input id="redirectOnlyAccepted" type="checkbox" /> Only Accepted</label>
+                  <div class="form-row" style="gap:10px;">
+                    <label class="checkbox-inline" style="font-size:11px;" data-tip="URL-encode special characters in redirect_uri payloads while preserving existing %XX sequences."><input id="redirectUrlEncode" type="checkbox" checked /> URL-Encode</label>
+                    <label class="checkbox-inline" style="font-size:11px;"><input id="redirectOnlyAccepted" type="checkbox" /> Only Accepted</label>
+                  </div>
                 </div>
                 <div id="redirectMutationList" class="mutation-table-wrap"></div>
               </div>

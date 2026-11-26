@@ -245,6 +245,7 @@ export function createApp() {
       attackerHost = 'attacker.example',
       mutationIds,
       useCookieJar = true,
+      urlEncode = true,
     } = req.body || {};
     if (!baseUrl) {
       return res.status(400).json({ error: 'Missing baseUrl' });
@@ -264,6 +265,7 @@ export function createApp() {
         attackerHost,
         cookieJar: useCookieJar ? cookieJar : null,
         networkConfig,
+        urlEncode: Boolean(urlEncode),
       });
       return res.json({ results });
     } catch (err) {

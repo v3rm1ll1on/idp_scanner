@@ -289,19 +289,35 @@ export async function sendAndTrace(store, options) {
   return hops;
 }
 
+function encodePreservingPercent(str) {
+  return String(str).replace(/(%[0-9a-fA-F]{2})|([^A-Za-z0-9\-_.~])/g, (match, pct, ch) => {
+    if (pct) return pct;
+    return encodeURIComponent(ch);
+  });
+}
+
 /**
- * Replaces or appends redirect_uri without double-encoding existing %XX sequences.
+ * Replaces or appends redirect_uri with optional URL-encoding while preserving existing %XX sequences.
  * When isHpp is true, preserves an unescaped "&redirect_uri=" separator for HTTP Parameter Pollution probes.
  * @param {string} baseUrl
  * @param {string} rawRedirectUri
- * @param {{isHpp?: boolean}} [options]
+ * @param {{isHpp?: boolean, urlEncode?: boolean}} [options]
  * @returns {string}
  */
-export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri, { isHpp = false } = {}) {
+export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri, { isHpp = false, urlEncode = true } = {}) {
   const urlObj = new URL(baseUrl);
   urlObj.searchParams.delete('redirect_uri');
   const base = urlObj.toString();
   const sep = base.includes('?') ? (base.endsWith('?') || base.endsWith('&') ? '' : '&') : '?';
+
+  if (urlEncode) {
+    if (isHpp && String(rawRedirectUri).includes('&redirect_uri=')) {
+      const [first, second] = String(rawRedirectUri).split('&redirect_uri=');
+      return `${base}${sep}redirect_uri=${encodePreservingPercent(first)}&redirect_uri=${encodePreservingPercent(second)}`;
+    }
+    return `${base}${sep}redirect_uri=${encodePreservingPercent(rawRedirectUri)}`;
+  }
+
   let safeVal = String(rawRedirectUri)
     .replace(/#/g, '%23')
     .replace(/ /g, '%20');
@@ -319,12 +335,15 @@ export function buildUrlWithRawRedirectUri(baseUrl, rawRedirectUri, { isHpp = fa
  */
 export async function batchTestRedirectUris(
   store,
-  { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example', cookieJar = null, networkConfig = null }
+  { baseUrl, headers = {}, mutations = [], attackerHost = 'attacker.example', cookieJar = null, networkConfig = null, urlEncode = true }
 ) {
   const results = [];
 
   for (const mut of mutations) {
-    const targetUrl = buildUrlWithRawRedirectUri(baseUrl, mut.uri, { isHpp: Boolean(mut.isHpp) });
+    const targetUrl = buildUrlWithRawRedirectUri(baseUrl, mut.uri, {
+      isHpp: Boolean(mut.isHpp),
+      urlEncode: Boolean(urlEncode),
+    });
 
     try {
       const hops = await sendAndTrace(store, {

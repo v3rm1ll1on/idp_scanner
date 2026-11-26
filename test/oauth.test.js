@@ -171,20 +171,28 @@ test('parseSetCookieHeader and CookieJar handle attributes, scoping, and expiry'
   assert.equal(jar.list().length, 0);
 });
 
-test('buildUrlWithRawRedirectUri preserves %XX sequences without double-encoding', () => {
-  const out = buildUrlWithRawRedirectUri(
+test('buildUrlWithRawRedirectUri encodes special chars when urlEncode=true while preserving %XX', () => {
+  const encoded = buildUrlWithRawRedirectUri(
     'https://auth.example.com/authorize?client_id=c1&redirect_uri=https://app.example.com/cb&state=s1',
-    'https://app.example.com/cb%0d%0aX-Test:%201#frag'
+    'https://app.example.com/cb?next=https://evil.test%0d%0aX-Test:%201#frag',
+    { urlEncode: true }
   );
-  assert.ok(out.includes('redirect_uri=https://app.example.com/cb%0d%0aX-Test:%201%23frag'));
-  assert.ok(!out.includes('%250d%250a'));
+  assert.ok(encoded.includes('redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb%3Fnext%3Dhttps%3A%2F%2Fevil.test%0d%0aX-Test%3A%201%23frag'));
+  assert.ok(!encoded.includes('%250d%250a'));
+
+  const rawOut = buildUrlWithRawRedirectUri(
+    'https://auth.example.com/authorize?client_id=c1&redirect_uri=https://app.example.com/cb&state=s1',
+    'https://app.example.com/cb%0d%0aX-Test:%201#frag',
+    { urlEncode: false }
+  );
+  assert.ok(rawOut.includes('redirect_uri=https://app.example.com/cb%0d%0aX-Test:%201%23frag'));
 
   const hppOut = buildUrlWithRawRedirectUri(
     'https://auth.example.com/authorize?client_id=c1&redirect_uri=https://app.example.com/cb',
     'https://app.example.com/cb&redirect_uri=https://evil.test/cb',
-    { isHpp: true }
+    { isHpp: true, urlEncode: true }
   );
-  assert.ok(hppOut.includes('redirect_uri=https://app.example.com/cb&redirect_uri=https://evil.test/cb'));
+  assert.ok(hppOut.includes('redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb&redirect_uri=https%3A%2F%2Fevil.test%2Fcb'));
 });
 
 test('verifyJwtWithJwks cryptographically verifies RS256 JWTs and rejects tampered payloads', () => {

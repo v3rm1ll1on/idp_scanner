@@ -412,6 +412,24 @@ $('genStateBtn').addEventListener('click', () => {
   }
 });
 
+$('encodeQueryBtn').addEventListener('click', () => {
+  const raw = $('repUrl').value.trim();
+  if (!raw) return;
+  try {
+    const u = new URL(raw);
+    const enc = (s) =>
+      String(s).replace(/(%[0-9a-fA-F]{2})|([^A-Za-z0-9\-_.~])/g, (m, pct, ch) => (pct ? pct : encodeURIComponent(ch)));
+    const pairs = [];
+    for (const [k, v] of u.searchParams.entries()) {
+      pairs.push(`${encodeURIComponent(k)}=${enc(v)}`);
+    }
+    const base = `${u.origin}${u.pathname}`;
+    $('repUrl').value = pairs.length ? `${base}?${pairs.join('&')}${u.hash}` : `${base}${u.hash}`;
+  } catch {
+    // Ignore invalid URL
+  }
+});
+
 $('refreshMutationsBtn').addEventListener('click', () => refreshRedirectMutations());
 $('redirectOnlyAccepted').addEventListener('change', renderRedirectMutations);
 $('paramOnlyAccepted').addEventListener('change', renderParamFuzzerTable);
@@ -448,10 +466,11 @@ $('batchRedirectBtn').addEventListener('click', async () => {
   }
   const attackerHost = $('attackerHostInput').value.trim() || 'attacker.example';
   const useCookieJar = $('repUseCookieJar').checked;
+  const urlEncode = $('redirectUrlEncode').checked;
   await withBusyButton($('batchRedirectBtn'), 'Probing...', async () => {
     const data = await api('/api/mutations/redirect-uri/batch', {
       method: 'POST',
-      body: JSON.stringify({ baseUrl, headers, attackerHost, useCookieJar }),
+      body: JSON.stringify({ baseUrl, headers, attackerHost, useCookieJar, urlEncode }),
     });
     if (data.error) {
       $('redirectFuzzerSummary').innerHTML = `<span class="badge badge-danger">${escapeHtml(data.error)}</span>`;
