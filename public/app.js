@@ -11,6 +11,7 @@ import {
 } from './js/state.js';
 import { initTooltips, initResizers, initTabsAndHelp } from './js/ui-layout.js';
 import { renderDiscovery } from './js/discovery.js';
+import { initCodecTool } from './js/codec.js';
 import {
   refreshRedirectMutations,
   renderRedirectMutations,
@@ -729,6 +730,16 @@ if (isDemoMode) {
 initTooltips();
 initResizers();
 initTabsAndHelp();
+initCodecTool({
+  onLoadRepeater: (url) => {
+    $('repUrl').value = url;
+    document.querySelector('[data-tab="repeater"]').click();
+  },
+  onLoadParser: (url) => {
+    $('parseInput').value = url;
+    $('parseBtn').click();
+  },
+});
 loadNetworkConfig();
 loadParamMutations();
 loadTokenMutations();

@@ -89,6 +89,7 @@
           <button class="tab" data-tab="repeater" data-tip="Edit/replay requests and run Redirect-URI, Auth Param, Token, and Custom Field fuzzers.">Repeater &amp; Redirect-URI Fuzzer</button>
           <button class="tab" data-tab="audit" data-tip="Review security findings, decode JWTs, and verify signatures via JWKS.">Tokens &amp; Audit <span id="auditTabBadge" class="badge badge-muted">0</span></button>
           <button class="tab" data-tab="discovery" data-tip="View parsed OIDC/OAuth2 discovery endpoints, capabilities, and quick-load presets.">Discovery</button>
+          <button class="tab" data-tab="codec" data-tip="URL encoder/decoder, query parameter inspector, and double-encoding helper.">URL Codec</button>
         </div>
 
         <div class="tab-content active" id="tab-inspector">
@@ -308,6 +309,48 @@
               <summary class="pane-subtitle clickable">Raw Discovery JSON</summary>
               <pre id="discoveryOutput" class="code-block" style="margin-top:6px; max-height:320px;"></pre>
             </details>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-codec">
+          <div class="split-2">
+            <div class="pane">
+              <div class="pane-title">
+                <span>URL Encoder / Decoder</span>
+                <label class="checkbox-inline" style="font-size:11px;" data-tip="Decode '+' as space (application/x-www-form-urlencoded)."><input id="codecPlusAsSpace" type="checkbox" checked /> Treat + as space</label>
+              </div>
+              <textarea id="codecInput" class="input mono code-edit" rows="6" placeholder="Paste URL, query string (a=1&amp;b=2), or parameter value (e.g. https://evil.com/cb?x=1&amp;y=2)..."></textarea>
+              <div class="form-row" style="flex-wrap:wrap;">
+                <button id="codecEncodeCompBtn" class="btn btn-primary" data-tip="encodeURIComponent() — encodes :, /, ?, &amp;, = (ideal for redirect_uri or parameter values).">Encode Component</button>
+                <button id="codecDecodeCompBtn" class="btn btn-secondary" data-tip="decodeURIComponent() — decodes %XX sequences.">Decode Component</button>
+                <button id="codecDoubleEncodeBtn" class="btn btn-secondary" data-tip="Double-encode (%25XX) for WAF/proxy bypass testing.">Double Encode</button>
+              </div>
+              <div class="form-row" style="flex-wrap:wrap;">
+                <button id="codecEncodeUriBtn" class="btn btn-secondary" data-tip="encodeURI() — keeps URL structure (://, ?, &amp;, =) intact.">Encode URI</button>
+                <button id="codecDecodeUriBtn" class="btn btn-secondary" data-tip="decodeURI() — decodes %XX while preserving reserved URL characters.">Decode URI</button>
+                <button id="codecEncodeQueryBtn" class="btn btn-secondary" data-tip="Encode only query parameter values while keeping base URL &amp; keys intact.">Encode Query Values</button>
+                <button id="codecDecodeQueryBtn" class="btn btn-secondary" data-tip="Decode only query parameter values while keeping base URL intact.">Decode Query Values</button>
+              </div>
+              <div class="pane-subtitle" style="margin-top:6px;">Decoded Query Parameters (from Input)</div>
+              <div id="codecParamsTable" class="kv-wrap" style="max-height:220px;"></div>
+            </div>
+            <div class="resizer-v split-resizer" title="Drag to resize panes"></div>
+            <div class="pane">
+              <div class="pane-title">
+                <span>Output</span>
+                <span id="codecStatus" class="muted mono" style="font-size:11px;">Ready</span>
+              </div>
+              <textarea id="codecOutput" class="input mono code-edit" rows="6" placeholder="Encoded / decoded result appears here..."></textarea>
+              <div class="form-row" style="flex-wrap:wrap;">
+                <button id="codecSwapBtn" class="btn btn-secondary" data-tip="Move Output back into Input for chained transformations.">Swap ⇅</button>
+                <button id="codecCopyBtn" class="btn btn-secondary" data-tip="Copy Output to clipboard.">Copy Output</button>
+                <button id="codecClearBtn" class="btn btn-ghost" data-tip="Clear Input and Output.">Clear</button>
+              </div>
+              <div class="form-row" style="flex-wrap:wrap;">
+                <button id="codecToRepeaterBtn" class="btn btn-primary" data-tip="Load Output (or Input) URL into Repeater &amp; switch tab.">Load → Repeater</button>
+                <button id="codecToParserBtn" class="btn btn-secondary" data-tip="Load Output (or Input) into the top Parse &amp; Load bar and parse it.">Load → Parse &amp; Load</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
