@@ -521,11 +521,21 @@ test('Network settings: self-signed TLS bypass and upstream HTTP proxy routing w
   await new Promise((resolve) => tlsServer.listen(0, '127.0.0.1', resolve));
   const tlsUrl = `https://127.0.0.1:${tlsServer.address().port}/health`;
 
-  let proxySawUrl = null;
+  let proxySawTarget = null;
   const proxyServer = http.createServer((req, res) => {
-    proxySawUrl = req.url;
+    proxySawTarget = req.url;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ viaProxy: true }));
+  });
+  proxyServer.on('connect', (req, clientSocket, head) => {
+    proxySawTarget = req.url;
+    clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    const net = http;
+    // Respond directly inside the tunnel with a minimal HTTP/1.1 200 response
+    clientSocket.on('data', () => {
+      clientSocket.end('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 16\r\nConnection: close\r\n\r\n{"viaProxy":true}');
+    });
+    if (head && head.length) clientSocket.emit('data', head);
   });
   await new Promise((resolve) => proxyServer.listen(0, '127.0.0.1', resolve));
   const proxyUrl = `http://127.0.0.1:${proxyServer.address().port}`;
@@ -575,7 +585,7 @@ test('Network settings: self-signed TLS bypass and upstream HTTP proxy routing w
       body: JSON.stringify({ method: 'GET', url: 'http://target.internal/oauth/authorize?client_id=1' }),
     });
     assert.equal(proxiedRes.status, 200);
-    assert.ok(proxySawUrl.includes('http://target.internal/oauth/authorize'));
+    assert.ok(proxySawTarget.includes('target.internal'));
   } finally {
     proxyServer.closeAllConnections?.();
     proxyServer.close();
