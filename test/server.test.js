@@ -694,14 +694,14 @@ test('Host-based Catch-All Trap captures non-local Host requests on any path', a
     const local404 = await fetch(`${baseUrl}/unknown-local-path`);
     assert.equal(local404.status, 404);
 
-    // Non-local Host (simulated /etc/hosts attacker.example -> 127.0.0.1) is trapped on any path
+    // Non-local Host (simulated /etc/hosts attacker.example -> 127.0.0.1) is trapped on any path & XSS-escaped
     const { port } = server.address();
     const trapRes = await new Promise((resolve, reject) => {
       const req = http.request(
         {
           host: '127.0.0.1',
           port,
-          path: '/evil/anything?code=stolen_999&state=s1',
+          path: '/evil/anything?code=stolen_999&state=s1&xss=<script>alert(1)</script>',
           method: 'GET',
           headers: {
             Host: 'attacker.example:3000',
@@ -719,6 +719,8 @@ test('Host-based Catch-All Trap captures non-local Host requests on any path', a
     });
     assert.equal(trapRes.status, 200);
     assert.ok(trapRes.body.includes('Attacker Trap Captured'));
+    assert.ok(!trapRes.body.includes('<script>alert(1)</script>'));
+    assert.ok(trapRes.body.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
 
     const traces = (await (await fetch(`${baseUrl}/api/traces`)).json()).traces;
     assert.equal(traces[0].label, 'attacker_trap');

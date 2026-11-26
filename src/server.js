@@ -14,6 +14,7 @@ import { auditOAuthContext } from './oauth/analyzer.js';
 import { generateRedirectUriMutations, getOAuthParameterMutations, getCustomFieldPresets, getTokenEndpointMutations } from './oauth/payloads.js';
 import { inspectJwt, verifyJwtWithJwks } from './oauth/jwt.js';
 import { CookieJar } from './oauth/cookies.js';
+import { registerTrapAndCallback } from './trap.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,79 +42,7 @@ export function createApp() {
   });
 
   app.use(express.json({ limit: '2mb' }));
-
-  // Host-based Catch-All Trap: captures any path when accessed via non-local Host (e.g. /etc/hosts attacker.example -> 127.0.0.1)
-  app.use(express.urlencoded({ extended: false }));
-  app.use((req, res, next) => {
-    const reqHost = (req.hostname || '').toLowerCase();
-    const isLocal = reqHost === 'localhost' || reqHost === '127.0.0.1' || reqHost === '::1';
-    if (isLocal || req.path === '/api/callback-fragment') {
-      return next();
-    }
-
-    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    let parsed;
-    try {
-      parsed = parseOAuthUrl(fullUrl);
-    } catch {
-      parsed = { oauthParams: {}, flowKind: 'attacker_trap' };
-    }
-    const bodyParams = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
-    const mergedParams = { ...parsed.oauthParams, ...bodyParams };
-    const audit = auditOAuthContext({
-      requestHeaders: req.headers,
-      oauthParams: mergedParams,
-      status: 200,
-    });
-
-    store.add({
-      id: crypto.randomUUID(),
-      traceGroupId: crypto.randomUUID(),
-      hopIndex: 0,
-      timestamp: new Date().toISOString(),
-      label: 'attacker_trap',
-      flowKind: `trap:${req.method}:${parsed.flowKind || 'hit'}`,
-      durationMs: 0,
-      request: {
-        method: req.method,
-        url: fullUrl,
-        headers: req.headers,
-        body: Object.keys(bodyParams).length ? new URLSearchParams(bodyParams).toString() : '',
-        oauthParams: mergedParams,
-      },
-      response: {
-        status: 200,
-        statusText: 'Trap Captured',
-        headers: { 'content-type': 'text/html' },
-        cookies: [],
-        location: null,
-        body: '',
-        oauthParams: mergedParams,
-      },
-      audit,
-    });
-
-    return res.type('html').send(`<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>OAuth Trap Captured</title></head>
-<body style="font-family: ui-monospace, monospace; background:#0b1120; color:#f1f5f9; padding:24px;">
-  <h2>Attacker Trap Captured</h2>
-  <p>Host: <strong>${req.get('host')}</strong> · Path: <strong>${req.originalUrl}</strong></p>
-  <pre id="out"></pre>
-  <script>
-    document.getElementById('out').textContent = window.location.href;
-    if (window.location.hash && window.location.hash.length > 1) {
-      fetch('/api/callback-fragment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullUrl: window.location.href })
-      });
-    }
-  </script>
-</body>
-</html>`);
-  });
-
+  registerTrapAndCallback(app, store);
   app.use('/mock-idp', mockIdp.router);
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -506,133 +435,6 @@ export function createApp() {
         networkConfig,
       });
       return res.json({ results });
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
-    }
-  });
-
-  // Local OAuth callback listener (supports GET query, #fragment, and POST form_post)
-  app.post('/callback', express.urlencoded({ extended: false }), (req, res) => {
-    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const bodyParams = req.body && typeof req.body === 'object' ? req.body : {};
-    const parsed = parseOAuthUrl(fullUrl);
-    const mergedParams = { ...parsed.oauthParams, ...bodyParams };
-    const audit = auditOAuthContext({ oauthParams: mergedParams, status: 200 });
-
-    store.add({
-      id: crypto.randomUUID(),
-      traceGroupId: crypto.randomUUID(),
-      hopIndex: 0,
-      timestamp: new Date().toISOString(),
-      label: 'local_callback_form_post',
-      flowKind: bodyParams.id_token || bodyParams.access_token ? 'form_post_token_callback' : 'form_post_callback',
-      durationMs: 0,
-      request: {
-        method: 'POST',
-        url: fullUrl,
-        headers: req.headers,
-        body: new URLSearchParams(bodyParams).toString(),
-        oauthParams: mergedParams,
-      },
-      response: {
-        status: 200,
-        statusText: 'OK',
-        headers: { 'content-type': 'text/html' },
-        location: null,
-        body: '',
-        oauthParams: mergedParams,
-      },
-      audit,
-    });
-
-    res.type('html').send('<!doctype html><html><body style="font-family:monospace;background:#0f172a;color:#e2e8f0;padding:24px;"><h2>OAuth form_post Callback Captured</h2><p>Logged to OAuth Workbench.</p></body></html>');
-  });
-
-  app.get('/callback', (req, res) => {
-    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const parsed = parseOAuthUrl(fullUrl);
-    const audit = auditOAuthContext({ oauthParams: parsed.oauthParams, status: 200 });
-
-    store.add({
-      id: crypto.randomUUID(),
-      traceGroupId: crypto.randomUUID(),
-      hopIndex: 0,
-      timestamp: new Date().toISOString(),
-      label: 'local_callback_listener',
-      flowKind: parsed.flowKind,
-      durationMs: 0,
-      request: {
-        method: 'GET',
-        url: fullUrl,
-        headers: req.headers,
-        body: '',
-        oauthParams: parsed.oauthParams,
-      },
-      response: {
-        status: 200,
-        statusText: 'OK',
-        headers: { 'content-type': 'text/html' },
-        location: null,
-        body: '',
-        oauthParams: parsed.oauthParams,
-      },
-      audit,
-    });
-
-    res.type('html').send(`<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>OAuth Callback Captured</title></head>
-<body style="font-family: ui-monospace, monospace; background:#0f172a; color:#e2e8f0; padding:24px;">
-  <h2>OAuth Callback Captured</h2>
-  <p>Query parameters were logged to OAuth Workbench.</p>
-  <pre id="out"></pre>
-  <script>
-    const out = document.getElementById('out');
-    out.textContent = window.location.href;
-    if (window.location.hash && window.location.hash.length > 1) {
-      fetch('/api/callback-fragment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullUrl: window.location.href })
-      });
-    }
-  </script>
-</body>
-</html>`);
-  });
-
-  app.post('/api/callback-fragment', (req, res) => {
-    const { fullUrl } = req.body || {};
-    if (!fullUrl) return res.status(400).json({ error: 'Missing fullUrl' });
-    try {
-      const parsed = parseOAuthUrl(fullUrl);
-      const audit = auditOAuthContext({ oauthParams: parsed.oauthParams, status: 200 });
-      store.add({
-        id: crypto.randomUUID(),
-        traceGroupId: crypto.randomUUID(),
-        hopIndex: 0,
-        timestamp: new Date().toISOString(),
-        label: 'local_callback_fragment',
-        flowKind: parsed.flowKind,
-        durationMs: 0,
-        request: {
-          method: 'GET',
-          url: fullUrl,
-          headers: {},
-          body: '',
-          oauthParams: parsed.oauthParams,
-        },
-        response: {
-          status: 200,
-          statusText: 'Fragment Captured',
-          headers: {},
-          location: null,
-          body: '',
-          oauthParams: parsed.oauthParams,
-        },
-        audit,
-      });
-      return res.json({ captured: true, oauthParams: parsed.oauthParams });
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
