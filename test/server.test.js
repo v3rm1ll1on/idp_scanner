@@ -7,7 +7,7 @@ import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { createApp, generateSelfSignedCert } from '../src/server.js';
+import { createApp, generateSelfSignedCert, parseCliArgs } from '../src/server.js';
 import { RedirectUriMutationType } from '../src/oauth/payloads.js';
 
 async function startTestServer() {
@@ -755,4 +755,22 @@ test('Host-based Catch-All Trap captures non-local Host requests on any path', a
     server.closeAllConnections?.();
     server.close();
   }
+});
+
+test('parseCliArgs handles --ssl, -p, -d, --cert/--key, and defaults cleanly', () => {
+  const def = parseCliArgs([], {});
+  assert.equal(def.port, 3000);
+  assert.equal(def.host, '127.0.0.1');
+  assert.equal(def.https, false);
+
+  const sslDefault = parseCliArgs(['--ssl'], {});
+  assert.equal(sslDefault.https, true);
+  assert.equal(sslDefault.httpsPort, 3443);
+
+  const custom = parseCliArgs(['-p', '80', '--ssl', '443', '-d', 'a.test,b.test', '-H', '0.0.0.0'], {});
+  assert.equal(custom.port, 80);
+  assert.equal(custom.https, true);
+  assert.equal(custom.httpsPort, 443);
+  assert.deepEqual(custom.domains, ['a.test', 'b.test']);
+  assert.equal(custom.host, '0.0.0.0');
 });

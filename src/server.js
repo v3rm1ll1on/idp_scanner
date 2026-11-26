@@ -474,38 +474,91 @@ export function generateSelfSignedCert(domains = ['localhost', 'attacker.example
   }
 }
 
+/**
+ * Parses CLI flags (--port/-p, --host/-H, --ssl, --domains/-d, --cert, --key, --help/-h)
+ * with environment variable fallbacks.
+ * @param {Array<string>} argv
+ * @param {object} [env]
+ * @returns {object}
+ */
+export function parseCliArgs(argv = [], env = process.env) {
+  const opts = {
+    port: Number(env.PORT || 3000),
+    host: env.HOST || '127.0.0.1',
+    https: env.HTTPS === 'true' || Boolean(env.HTTPS_PORT) || Boolean(env.SSL_CERT && env.SSL_KEY),
+    httpsPort: Number(env.HTTPS_PORT || 3443),
+    domains: (env.SSL_DOMAINS || 'localhost,attacker.example')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    cert: env.SSL_CERT || '',
+    key: env.SSL_KEY || '',
+    help: false,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--help' || arg === '-h') {
+      opts.help = true;
+    } else if ((arg === '--port' || arg === '-p') && argv[i + 1]) {
+      opts.port = Number(argv[++i]);
+    } else if ((arg === '--host' || arg === '-H') && argv[i + 1]) {
+      opts.host = argv[++i];
+    } else if (arg === '--ssl') {
+      opts.https = true;
+      if (argv[i + 1] && /^\d+$/.test(argv[i + 1])) {
+        opts.httpsPort = Number(argv[++i]);
+      }
+    } else if ((arg === '--domains' || arg === '-d') && argv[i + 1]) {
+      opts.domains = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (arg === '--cert' && argv[i + 1]) {
+      opts.cert = argv[++i];
+      opts.https = true;
+    } else if (arg === '--key' && argv[i + 1]) {
+      opts.key = argv[++i];
+      opts.https = true;
+    }
+  }
+
+  return opts;
+}
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const port = Number(process.env.PORT || 3000);
-  const host = process.env.HOST || '127.0.0.1';
+  const cli = parseCliArgs(process.argv.slice(2));
+  if (cli.help) {
+    console.log(`OAuth Workbench CLI
+Usage: node src/server.js [options]
+
+Options:
+  -p, --port <port>         HTTP port (default: 3000)
+  -H, --host <host>         Bind address (default: 127.0.0.1)
+      --ssl [port]          Enable parallel HTTPS listener (default port: 3443)
+  -d, --domains <list>      SAN domains for auto self-signed cert (default: localhost,attacker.example)
+      --cert <path>         Custom TLS certificate PEM file
+      --key <path>          Custom TLS private key PEM file
+  -h, --help                Show this help
+
+Examples:
+  node src/server.js --ssl
+  sudo node src/server.js -p 80 --ssl 443 -d attacker.example`);
+    process.exit(0);
+  }
+
   const { app } = createApp();
-  app.listen(port, host, () => {
-    console.log(`OAuth Workbench listening on http://${host}:${port}`);
-    console.log(`Mock IdP available at http://${host}:${port}/mock-idp/.well-known/openid-configuration`);
+  app.listen(cli.port, cli.host, () => {
+    console.log(`OAuth Workbench listening on http://${cli.host}:${cli.port}`);
+    console.log(`Mock IdP available at http://${cli.host}:${cli.port}/mock-idp/.well-known/openid-configuration`);
   });
 
-  const enableHttps =
-    process.env.HTTPS === 'true' ||
-    Boolean(process.env.HTTPS_PORT) ||
-    Boolean(process.env.SSL_CERT && process.env.SSL_KEY);
-
-  if (enableHttps) {
-    const httpsPort = Number(process.env.HTTPS_PORT || 3443);
+  if (cli.https) {
     const creds =
-      process.env.SSL_CERT && process.env.SSL_KEY
-        ? {
-            cert: fs.readFileSync(process.env.SSL_CERT),
-            key: fs.readFileSync(process.env.SSL_KEY),
-          }
-        : generateSelfSignedCert(
-            (process.env.SSL_DOMAINS || 'localhost,attacker.example')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-          );
+      cli.cert && cli.key
+        ? { cert: fs.readFileSync(cli.cert), key: fs.readFileSync(cli.key) }
+        : generateSelfSignedCert(cli.domains);
 
-    https.createServer(creds, app).listen(httpsPort, host, () => {
-      console.log(`OAuth Workbench HTTPS listening on https://${host}:${httpsPort}`);
+    https.createServer(creds, app).listen(cli.httpsPort, cli.host, () => {
+      console.log(`OAuth Workbench HTTPS listening on https://${cli.host}:${cli.httpsPort}`);
     });
   }
 }

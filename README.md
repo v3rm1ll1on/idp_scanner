@@ -32,12 +32,14 @@ Open `http://127.0.0.1:3000` in your browser (or `http://127.0.0.1:3000/?demo=tr
 
 ### HTTPS / HSTS Listener
 
-Start an additional HTTPS listener (auto-generates a self-signed SAN cert, or pass your own `SSL_CERT`/`SSL_KEY` e.g. from `mkcert`):
+Start an additional HTTPS listener (auto-generates a self-signed SAN cert, or pass `--cert`/`--key` e.g. from `mkcert`):
 
 ```bash
-HTTPS=true HTTPS_PORT=3443 SSL_DOMAINS=localhost,attacker.example node src/server.js
-# Or with port 443 + custom cert:
-sudo HTTPS_PORT=443 SSL_CERT=./cert.pem SSL_KEY=./key.pem node src/server.js
+node src/server.js --ssl
+# Or on port 80 + 443 for attacker.example:
+sudo node src/server.js -p 80 --ssl 443 -d attacker.example
+# Or with custom certs:
+sudo node src/server.js --ssl 443 --cert ./cert.pem --key ./key.pem
 ```
 
 ## Running Tests
