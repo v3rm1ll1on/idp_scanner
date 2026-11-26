@@ -727,9 +727,10 @@ test('Host-based Catch-All Trap captures non-local Host requests on any path', a
     assert.equal(traces[0].request.oauthParams.code, 'stolen_999');
     assert.equal(traces[0].request.headers.referer, 'https://idp.target.com/authorize');
 
-    // Also verify HTTPS listener with generated self-signed SAN cert
+    // Also verify HTTPS listener with generated SAN cert (mkcert or openssl fallback)
     const creds = generateSelfSignedCert(['localhost', 'attacker.example']);
-    const httpsServer = https.createServer(creds, createApp().app);
+    assert.ok(creds.provider === 'mkcert' || creds.provider === 'openssl');
+    const httpsServer = https.createServer({ key: creds.key, cert: creds.cert }, createApp().app);
     await new Promise((resolve) => httpsServer.listen(0, '127.0.0.1', resolve));
     try {
       const httpsPort = httpsServer.address().port;

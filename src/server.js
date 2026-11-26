@@ -444,30 +444,47 @@ export function createApp() {
 }
 
 /**
- * Generates an ephemeral self-signed TLS certificate with SANs for local HTTPS/HSTS testing.
+ * Generates an ephemeral TLS certificate with SANs, preferring mkcert (browser-trusted for HSTS)
+ * and falling back to an OpenSSL self-signed certificate.
  * @param {Array<string>} [domains]
- * @returns {{key: Buffer, cert: Buffer}}
+ * @returns {{key: Buffer, cert: Buffer, provider: 'mkcert'|'openssl'}}
  */
 export function generateSelfSignedCert(domains = ['localhost', 'attacker.example']) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'owb-ssl-'));
   const keyPath = path.join(tmpDir, 'key.pem');
   const certPath = path.join(tmpDir, 'cert.pem');
-  const sanEntries = [
-    ...domains.map((d) => `DNS:${d}`),
-    'IP:127.0.0.1',
-  ].join(',');
+  const hostList = domains.length > 0 ? domains : ['localhost'];
 
   try {
+    try {
+      execFileSync('mkcert', ['-key-file', keyPath, '-cert-file', certPath, ...hostList, '127.0.0.1'], {
+        stdio: 'ignore',
+      });
+      return {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+        provider: 'mkcert',
+      };
+    } catch {
+      // mkcert unavailable or failed; fall back to openssl self-signed
+    }
+
+    const sanEntries = [
+      ...hostList.map((d) => `DNS:${d}`),
+      'IP:127.0.0.1',
+    ].join(',');
+
     execFileSync('openssl', [
       'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
       '-keyout', keyPath, '-out', certPath,
       '-days', '30',
-      '-subj', `/CN=${domains[0] || 'localhost'}`,
+      '-subj', `/CN=${hostList[0]}`,
       '-addext', `subjectAltName=${sanEntries}`,
     ], { stdio: 'ignore' });
     return {
       key: fs.readFileSync(keyPath),
       cert: fs.readFileSync(certPath),
+      provider: 'openssl',
     };
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -554,11 +571,11 @@ Examples:
   if (cli.https) {
     const creds =
       cli.cert && cli.key
-        ? { cert: fs.readFileSync(cli.cert), key: fs.readFileSync(cli.key) }
+        ? { cert: fs.readFileSync(cli.cert), key: fs.readFileSync(cli.key), provider: 'custom' }
         : generateSelfSignedCert(cli.domains);
 
-    https.createServer(creds, app).listen(cli.httpsPort, cli.host, () => {
-      console.log(`OAuth Workbench HTTPS listening on https://${cli.host}:${cli.httpsPort}`);
+    https.createServer({ key: creds.key, cert: creds.cert }, app).listen(cli.httpsPort, cli.host, () => {
+      console.log(`OAuth Workbench HTTPS listening on https://${cli.host}:${cli.httpsPort} (cert: ${creds.provider})`);
     });
   }
 }
