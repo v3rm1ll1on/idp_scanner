@@ -302,6 +302,23 @@ $('repSendBtn').addEventListener('click', async () => {
     const resBadge = $('repResTabBadge');
     resBadge.textContent = String(last.response.status || 'ERR');
     resBadge.className = `badge ${statusBadgeClass(last.response.status)}`;
+    if (last.response.location) {
+      let resolved = last.response.location;
+      try { resolved = new URL(last.response.location, last.request.url).toString(); } catch { /* keep raw */ }
+      $('repLocBar').style.display = 'flex';
+      const isHttp = /^https?:\/\//i.test(resolved);
+      $('repLocLinkWrap').innerHTML = isHttp
+        ? `Location: <a href="${escapeHtml(resolved)}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;" data-tip="Open Location in new tab">${escapeHtml(resolved)}</a>`
+        : `Location: ${escapeHtml(resolved)}`;
+      $('repFollowLocBtn').onclick = () => {
+        $('repMethod').value = 'GET';
+        $('repUrl').value = resolved;
+        $('repBody').value = '';
+        refreshCustomParamOptions();
+      };
+    } else {
+      $('repLocBar').style.display = 'none';
+    }
     document.querySelector('.rep-subtab[data-reptab="response"]').click();
   } else if (data.error) {
     $('repResponsePreview').textContent = `Error: ${data.error}`;

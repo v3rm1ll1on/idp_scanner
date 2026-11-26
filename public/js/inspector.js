@@ -243,9 +243,30 @@ export function renderSelectedTrace() {
   $('reqBody').textContent = trace.request.body || '(empty)';
 
   $('resStatusBadge').innerHTML = `<span class="badge ${statusBadgeClass(trace.response.status)}">${trace.response.status} ${escapeHtml(trace.response.statusText || '')}</span>`;
-  $('resSummary').textContent = trace.response.location
-    ? `HTTP ${trace.response.status} -> Location: ${trace.response.location}`
-    : `HTTP ${trace.response.status} (${trace.durationMs}ms)`;
+  if (trace.response.location) {
+    let resolvedLoc = trace.response.location;
+    try {
+      resolvedLoc = new URL(trace.response.location, trace.request.url).toString();
+    } catch {
+      // Keep raw location
+    }
+    const isHttp = /^https?:\/\//i.test(resolvedLoc);
+    $('resSummary').innerHTML =
+      `HTTP ${trace.response.status} -&gt; Location: ` +
+      `<a href="#" class="loc-load-rep" data-url="${escapeHtml(resolvedLoc)}" style="color:#38bdf8;text-decoration:underline;" data-tip="Click to load this Location URL into Repeater">${escapeHtml(trace.response.location)}</a>` +
+      (isHttp ? ` <a href="${escapeHtml(resolvedLoc)}" target="_blank" rel="noopener noreferrer" class="badge badge-info" style="margin-left:6px;text-decoration:none;" data-tip="Open Location URL in new browser tab">Open</a>` : '');
+    $('resSummary').querySelector('.loc-load-rep')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      $('repMethod').value = 'GET';
+      $('repUrl').value = resolvedLoc;
+      $('repHeaders').value = '{}';
+      $('repBody').value = '';
+      refreshCustomParamOptions();
+      document.querySelector('[data-tab="repeater"]').click();
+    });
+  } else {
+    $('resSummary').textContent = `HTTP ${trace.response.status} (${trace.durationMs}ms)`;
+  }
   renderKvTable($('resOAuthParams'), trace.response.oauthParams || {});
   renderCookiesTable($('resCookies'), trace.response.cookies || []);
   renderKvTable($('resHeaders'), trace.response.headers || {});
