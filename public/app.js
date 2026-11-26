@@ -272,7 +272,16 @@ $('parseBtn').addEventListener('click', async () => {
 });
 
 // Repeater & Fuzzer events
+$('repUrl').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('repSendBtn').click();
+  }
+});
+
 $('repSendBtn').addEventListener('click', async () => {
+  const url = $('repUrl').value.trim();
+  if (!url) return;
   let headers;
   try {
     headers = parseRepeaterHeaders();
@@ -281,51 +290,53 @@ $('repSendBtn').addEventListener('click', async () => {
     document.querySelector('.rep-subtab[data-reptab="response"]').click();
     return;
   }
-  const data = await api('/api/send', {
-    method: 'POST',
-    body: JSON.stringify({
-      method: $('repMethod').value,
-      url: $('repUrl').value.trim(),
-      headers,
-      body: $('repBody').value,
-      followRedirects: $('repFollowRedirects').checked,
-      useCookieJar: $('repUseCookieJar').checked,
-      label: 'repeater',
-    }),
-  });
-  if (data.hops && data.hops.length > 0) {
-    state.selectedTraceId = data.hops[0].id;
-    const last = data.hops[data.hops.length - 1];
-    const locLine = last.response.location ? `\nLocation: ${last.response.location}` : '';
-    const bodyPreview = (last.response.body || '').slice(0, 1200);
-    $('repResponsePreview').textContent = `HTTP ${last.response.status} ${last.response.statusText || ''} (${last.durationMs}ms)${locLine}\n\n${bodyPreview || '(empty body)'}`;
-    const resBadge = $('repResTabBadge');
-    resBadge.textContent = String(last.response.status || 'ERR');
-    resBadge.className = `badge ${statusBadgeClass(last.response.status)}`;
-    if (last.response.location) {
-      let resolved = last.response.location;
-      try { resolved = new URL(last.response.location, last.request.url).toString(); } catch { /* keep raw */ }
-      $('repLocBar').style.display = 'flex';
-      const isHttp = /^https?:\/\//i.test(resolved);
-      $('repLocLinkWrap').innerHTML = isHttp
-        ? `Location: <a href="${escapeHtml(resolved)}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;" data-tip="Open Location in new tab">${escapeHtml(resolved)}</a>`
-        : `Location: ${escapeHtml(resolved)}`;
-      $('repFollowLocBtn').onclick = () => {
-        $('repMethod').value = 'GET';
-        $('repUrl').value = resolved;
-        $('repBody').value = '';
-        refreshCustomParamOptions();
-      };
-    } else {
-      $('repLocBar').style.display = 'none';
+  await withBusyButton($('repSendBtn'), 'Sending...', async () => {
+    const data = await api('/api/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        method: $('repMethod').value,
+        url,
+        headers,
+        body: $('repBody').value,
+        followRedirects: $('repFollowRedirects').checked,
+        useCookieJar: $('repUseCookieJar').checked,
+        label: 'repeater',
+      }),
+    });
+    if (data.hops && data.hops.length > 0) {
+      state.selectedTraceId = data.hops[0].id;
+      const last = data.hops[data.hops.length - 1];
+      const locLine = last.response.location ? `\nLocation: ${last.response.location}` : '';
+      const bodyPreview = (last.response.body || '').slice(0, 1200);
+      $('repResponsePreview').textContent = `HTTP ${last.response.status} ${last.response.statusText || ''} (${last.durationMs}ms)${locLine}\n\n${bodyPreview || '(empty body)'}`;
+      const resBadge = $('repResTabBadge');
+      resBadge.textContent = String(last.response.status || 'ERR');
+      resBadge.className = `badge ${statusBadgeClass(last.response.status)}`;
+      if (last.response.location) {
+        let resolved = last.response.location;
+        try { resolved = new URL(last.response.location, last.request.url).toString(); } catch { /* keep raw */ }
+        $('repLocBar').style.display = 'flex';
+        const isHttp = /^https?:\/\//i.test(resolved);
+        $('repLocLinkWrap').innerHTML = isHttp
+          ? `Location: <a href="${escapeHtml(resolved)}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;" data-tip="Open Location in new tab">${escapeHtml(resolved)}</a>`
+          : `Location: ${escapeHtml(resolved)}`;
+        $('repFollowLocBtn').onclick = () => {
+          $('repMethod').value = 'GET';
+          $('repUrl').value = resolved;
+          $('repBody').value = '';
+          refreshCustomParamOptions();
+        };
+      } else {
+        $('repLocBar').style.display = 'none';
+      }
+      document.querySelector('.rep-subtab[data-reptab="response"]').click();
+    } else if (data.error) {
+      $('repResponsePreview').textContent = `Error: ${data.error}`;
+      document.querySelector('.rep-subtab[data-reptab="response"]').click();
     }
-    document.querySelector('.rep-subtab[data-reptab="response"]').click();
-  } else if (data.error) {
-    $('repResponsePreview').textContent = `Error: ${data.error}`;
-    document.querySelector('.rep-subtab[data-reptab="response"]').click();
-  }
-  await refreshCookieJarBadge();
-  await loadTraces();
+    await refreshCookieJarBadge();
+    await loadTraces();
+  });
 });
 
 $('repOpenBrowserBtn').addEventListener('click', () => {
@@ -352,14 +363,16 @@ $('repReplay2xBtn').addEventListener('click', async () => {
     label: 'replay_2x',
   };
   if (!payload.url) return;
-  const r1 = await api('/api/send', { method: 'POST', body: JSON.stringify(payload) });
-  const r2 = await api('/api/send', { method: 'POST', body: JSON.stringify(payload) });
-  const s1 = r1.hops?.[0]?.response?.status ?? 'ERR';
-  const s2 = r2.hops?.[0]?.response?.status ?? 'ERR';
-  $('replayResultBox').style.display = 'block';
-  $('replayResultBox').textContent = `Replay 2x -> Attempt #1: HTTP ${s1} | Attempt #2: HTTP ${s2}`;
-  await refreshCookieJarBadge();
-  await loadTraces();
+  await withBusyButton($('repReplay2xBtn'), 'Replaying...', async () => {
+    const r1 = await api('/api/send', { method: 'POST', body: JSON.stringify(payload) });
+    const r2 = await api('/api/send', { method: 'POST', body: JSON.stringify(payload) });
+    const s1 = r1.hops?.[0]?.response?.status ?? 'ERR';
+    const s2 = r2.hops?.[0]?.response?.status ?? 'ERR';
+    $('replayResultBox').style.display = 'block';
+    $('replayResultBox').textContent = `Replay 2x -> Attempt #1: HTTP ${s1} | Attempt #2: HTTP ${s2}`;
+    await refreshCookieJarBadge();
+    await loadTraces();
+  });
 });
 
 $('clearCookiesBtn').addEventListener('click', async () => {
@@ -386,9 +399,10 @@ $('quickMutateSelect').addEventListener('change', (e) => {
 });
 
 $('genPkceBtn').addEventListener('click', async () => {
-  const verifier = randomToken(32);
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  const challenge = toBase64Url(new Uint8Array(digest));
+  const pkce = await api('/api/pkce');
+  const verifier = pkce.verifier;
+  const challenge = pkce.challenge;
+  if (!verifier || !challenge) return;
   try {
     const u = new URL($('repUrl').value);
     u.searchParams.set('code_challenge', challenge);
@@ -415,19 +429,28 @@ $('genStateBtn').addEventListener('click', () => {
 $('encodeQueryBtn').addEventListener('click', () => {
   const raw = $('repUrl').value.trim();
   if (!raw) return;
-  try {
-    const u = new URL(raw);
-    const enc = (s) =>
-      String(s).replace(/(%[0-9a-fA-F]{2})|([^A-Za-z0-9\-_.~])/g, (m, pct, ch) => (pct ? pct : encodeURIComponent(ch)));
-    const pairs = [];
-    for (const [k, v] of u.searchParams.entries()) {
-      pairs.push(`${encodeURIComponent(k)}=${enc(v)}`);
-    }
-    const base = `${u.origin}${u.pathname}`;
-    $('repUrl').value = pairs.length ? `${base}?${pairs.join('&')}${u.hash}` : `${base}${u.hash}`;
-  } catch {
-    // Ignore invalid URL
-  }
+  const qIdx = raw.indexOf('?');
+  if (qIdx === -1) return;
+  const hIdx = raw.indexOf('#', qIdx);
+  const base = raw.slice(0, qIdx);
+  const query = hIdx === -1 ? raw.slice(qIdx + 1) : raw.slice(qIdx + 1, hIdx);
+  const hash = hIdx === -1 ? '' : raw.slice(hIdx);
+
+  const enc = (s) =>
+    String(s).replace(/(%[0-9a-fA-F]{2})|([^A-Za-z0-9\-_.~])/g, (m, pct, ch) => (pct ? pct : encodeURIComponent(ch)));
+
+  const pairs = query
+    .split('&')
+    .filter(Boolean)
+    .map((part) => {
+      const eqIdx = part.indexOf('=');
+      if (eqIdx === -1) return enc(part);
+      const k = part.slice(0, eqIdx);
+      const v = part.slice(eqIdx + 1);
+      return `${enc(k)}=${enc(v)}`;
+    });
+
+  $('repUrl').value = `${base}?${pairs.join('&')}${hash}`;
 });
 
 $('refreshMutationsBtn').addEventListener('click', () => refreshRedirectMutations());

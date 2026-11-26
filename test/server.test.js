@@ -775,3 +775,17 @@ test('parseCliArgs handles --ssl, -p, -d, --cert/--key, and defaults cleanly', (
   assert.deepEqual(custom.domains, ['a.test', 'b.test']);
   assert.equal(custom.host, '0.0.0.0');
 });
+
+test('GET /api/pkce generates valid S256 verifier and challenge', async () => {
+  const { server, baseUrl } = await startTestServer();
+  try {
+    const res = await (await fetch(`${baseUrl}/api/pkce`)).json();
+    assert.equal(res.method, 'S256');
+    assert.ok(res.verifier.length >= 40);
+    const expected = crypto.createHash('sha256').update(res.verifier).digest('base64url');
+    assert.equal(res.challenge, expected);
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});

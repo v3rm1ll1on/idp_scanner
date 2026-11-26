@@ -50,6 +50,12 @@ export function createApp() {
     res.json({ ok: true, version: '0.1.0' });
   });
 
+  app.get('/api/pkce', (_req, res) => {
+    const verifier = crypto.randomBytes(32).toString('base64url');
+    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+    res.json({ verifier, challenge, method: 'S256' });
+  });
+
   app.get('/api/network', (_req, res) => {
     res.json(publicNetworkView());
   });
